@@ -1,5 +1,6 @@
-# Node deps — bootstrap installs these on first run
+# Node deps and build output — bootstrap installs/builds on first run
 skills/review/scripts/app/node_modules/
+skills/review/scripts/app/dist/
 
 # Editor / OS noise
 .vscode/

@@ -34,8 +34,8 @@ of the interactive flows, re-read `docs/annai-architecture.md` first.**
   agent mimics) and `surface.schema.json` (generated from zod via
   `npm run gen:schema`).
 - `skills/review/scripts/annai.sh` — bash entry point. First run does
-  `npm install --omit=dev` inside `app/`; subsequent runs `exec node` the
-  built CLI.
+  `npm install` and `npm run build` inside `app/`; subsequent runs
+  `exec node` the built CLI.
 - `skills/review/scripts/app/` — node + react project.
   - `src/cli.ts` + `src/cli/*` — subcommand router and handlers.
   - `src/daemon/*` — daemon process: `daemon.ts` (entry), `session.ts`
@@ -45,7 +45,7 @@ of the interactive flows, re-read `docs/annai-architecture.md` first.**
   - `src/shared/*` — types and zod schemas shared between cli, daemon, and
     frontend.
   - `src/frontend/*` — React 19 + Vite app, served at `/` by the daemon.
-  - `dist/` — committed build output, shipped with the plugin.
+  - `dist/` — gitignored; built by `annai.sh` on first run.
   - `tests/{unit,frontend}/` — vitest.
 
 ## Dev workflow
