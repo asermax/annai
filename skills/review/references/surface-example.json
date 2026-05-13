@@ -1,0 +1,150 @@
+{
+  "pr": {
+    "url": "https://github.com/example-org/example-repo/pull/42",
+    "title": "Add scheduling mode to transitions",
+    "number": 42,
+    "branch": "feat/scheduling-mode",
+    "baseBranch": "main",
+    "stats": {
+      "additions": 87,
+      "deletions": 12,
+      "files": 4
+    }
+  },
+  "tldr": "Introduces a `scheduling_mode` column on `transitions` and routes the advance endpoint through it. The new mode controls whether a transition runs immediately or is queued for later.",
+  "repo": {
+    "path": "~/workspace/example-org/example-repo"
+  },
+  "groups": [
+    {
+      "id": "base-model",
+      "title": "Data model: scheduling_mode on transitions",
+      "kind": "base-context",
+      "intro": "Before reading the endpoint changes, anchor on the model. A new `scheduling_mode` column lands on `transitions` with three states. The advance endpoint downstream branches on this value, so it pays to internalise the mode set first.",
+      "diagrams": [
+        {
+          "id": "erd-transitions",
+          "title": "transitions (after this PR)",
+          "source": "erDiagram\n    TRANSITIONS {\n        uuid id PK\n        uuid entity_id FK\n        string from_state\n        string to_state\n        string scheduling_mode\n        timestamp scheduled_for\n    }"
+        }
+      ],
+      "diffs": [
+        {
+          "id": "diff-migration",
+          "path": "migrations/0042_add_scheduling_mode.sql",
+          "hunks": [
+            {
+              "header": "@@ -0,0 +1,8 @@",
+              "lines": [
+                { "kind": "add", "oldLine": null, "newLine": 1, "content": "ALTER TABLE transitions" },
+                { "kind": "add", "oldLine": null, "newLine": 2, "content": "  ADD COLUMN scheduling_mode TEXT NOT NULL DEFAULT 'immediate'" },
+                { "kind": "add", "oldLine": null, "newLine": 3, "content": "    CHECK (scheduling_mode IN ('immediate', 'queued', 'deferred'));" },
+                { "kind": "add", "oldLine": null, "newLine": 4, "content": "" },
+                { "kind": "add", "oldLine": null, "newLine": 5, "content": "ALTER TABLE transitions" },
+                { "kind": "add", "oldLine": null, "newLine": 6, "content": "  ADD COLUMN scheduled_for TIMESTAMPTZ NULL;" },
+                { "kind": "add", "oldLine": null, "newLine": 7, "content": "" },
+                { "kind": "add", "oldLine": null, "newLine": 8, "content": "CREATE INDEX idx_transitions_scheduled_for ON transitions (scheduled_for) WHERE scheduled_for IS NOT NULL;" }
+              ]
+            }
+          ],
+          "annotations": [
+            {
+              "id": "ann-default-immediate",
+              "kind": "pattern",
+              "title": "Default 'immediate' preserves existing behaviour",
+              "body": "Every existing row will read `scheduling_mode = 'immediate'` after this migration, which is also what every existing call site expects when the column is absent. The downstream endpoint's branching keeps the immediate path identical to the old behaviour — this is the backwards-compat seam.",
+              "lineRange": [2, 3]
+            }
+          ],
+          "suggestions": []
+        }
+      ]
+    },
+    {
+      "id": "advance-endpoint",
+      "title": "Entry point: POST /transitions/:id/advance",
+      "kind": "entry-point",
+      "intro": "The reviewer's mental model from group 1 (immediate/queued/deferred) lands here. The handler now branches on `scheduling_mode` and dispatches accordingly. Pay attention to the queued path — it's the only one that writes to `scheduled_for`.",
+      "diffs": [
+        {
+          "id": "diff-advance",
+          "path": "src/handlers/advance.ts",
+          "hunks": [
+            {
+              "header": "@@ -10,7 +10,21 @@ export const advance = async (req, res) => {",
+              "lines": [
+                { "kind": "context", "oldLine": 10, "newLine": 10, "content": "  const transition = await db.transitions.findOne({ id: req.params.id })" },
+                { "kind": "context", "oldLine": 11, "newLine": 11, "content": "  if (transition == null) return res.status(404).end()" },
+                { "kind": "context", "oldLine": 12, "newLine": 12, "content": "" },
+                { "kind": "del", "oldLine": 13, "newLine": null, "content": "  await runTransition(transition)" },
+                { "kind": "del", "oldLine": 14, "newLine": null, "content": "  return res.status(204).end()" },
+                { "kind": "add", "oldLine": null, "newLine": 13, "content": "  switch (transition.scheduling_mode) {" },
+                { "kind": "add", "oldLine": null, "newLine": 14, "content": "    case 'immediate':" },
+                { "kind": "add", "oldLine": null, "newLine": 15, "content": "      await runTransition(transition)" },
+                { "kind": "add", "oldLine": null, "newLine": 16, "content": "      return res.status(204).end()" },
+                { "kind": "add", "oldLine": null, "newLine": 17, "content": "    case 'queued':" },
+                { "kind": "add", "oldLine": null, "newLine": 18, "content": "      await enqueueTransition(transition, { scheduled_for: req.body?.scheduled_for })" },
+                { "kind": "add", "oldLine": null, "newLine": 19, "content": "      return res.status(202).end()" },
+                { "kind": "add", "oldLine": null, "newLine": 20, "content": "    case 'deferred':" },
+                { "kind": "add", "oldLine": null, "newLine": 21, "content": "      return res.status(202).end()" },
+                { "kind": "add", "oldLine": null, "newLine": 22, "content": "  }" }
+              ]
+            },
+            {
+              "header": "@@ -30,3 +44,4 @@ export const advance = async (req, res) => {",
+              "lines": [
+                { "kind": "context", "oldLine": 30, "newLine": 44, "content": "}" },
+                { "kind": "context", "oldLine": 31, "newLine": 45, "content": "" },
+                { "kind": "context", "oldLine": 32, "newLine": 46, "content": "export const advanceRouter = router" },
+                { "kind": "add", "oldLine": null, "newLine": 47, "content": "export { runTransition, enqueueTransition }" }
+              ]
+            }
+          ],
+          "annotations": [
+            {
+              "id": "ann-switch-shape",
+              "kind": "note",
+              "title": "Branch maps 1:1 to the mode enum",
+              "body": "The switch covers all three values from the migration's CHECK constraint. If a fourth mode is ever added, both this switch and the migration's CHECK need to move in lockstep — worth flagging in a test.",
+              "lineRange": [13, 22]
+            },
+            {
+              "id": "ann-deferred-noop",
+              "kind": "question",
+              "title": "What schedules a 'deferred' transition?",
+              "body": "The `deferred` case returns 202 without writing `scheduled_for` or enqueueing. Who's responsible for eventually picking these up? If nothing schedules them, this is effectively a black hole.",
+              "lineRange": [20, 21]
+            },
+            {
+              "id": "ann-export-runtime",
+              "kind": "surface-check",
+              "title": "Newly exported internals",
+              "body": "`runTransition` and `enqueueTransition` are now exported from this module. Check whether the export is used (tests? other handlers?) or whether it can drop.",
+              "lineRange": [47, 47]
+            },
+            {
+              "id": "ann-doc-discrepancy",
+              "kind": "discrepancy",
+              "title": "Scope doc promised an `advance_at` field",
+              "body": "The scope doc (`docs/transition-scheduling.md`) describes the request body as `{ advance_at: ISO8601 }`, but the handler reads `req.body?.scheduled_for`. One of them is wrong.",
+              "lineRange": [18, 18]
+            }
+          ],
+          "suggestions": [
+            {
+              "id": "sugg-fail-on-unknown-mode",
+              "body": "Consider adding a default arm that 500s on unknown modes. Right now an unexpected value silently falls through the switch and returns whatever the response was on the previous statement.",
+              "lineRange": [22, 22],
+              "suggestionCode": "    default:\n      return res.status(500).json({ error: `unknown scheduling_mode: ${transition.scheduling_mode}` })"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "diagrams": [],
+  "reviewPrompts": [
+    "Does the migration's CHECK constraint stay in sync with the handler's switch arms?",
+    "Is there a story for 'deferred' transitions actually running?"
+  ]
+}

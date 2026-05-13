@@ -1,0 +1,1339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Code Review Surface — Prototype v04</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-alt: #f6f8fa;
+    --border: #d0d7de;
+    --border-soft: #e6e9ed;
+    --ink: #1f2328;
+    --muted: #6b7280;
+    --faint: #9aa1ac;
+    --accent: #0969da;
+    --add-bg: #e6ffec;
+    --add-num: #ccffd8;
+    --del-bg: #ffebe9;
+    --del-num: #ffd7d5;
+    --hunk-bg: #f1f5f9;
+    --hunk-ink: #57606a;
+    --note-q: #b65d00;
+    --note-i: #0969da;
+    --note-t: #57606a;
+    --note-d: #cf222e;
+    --hl: rgba(255, 213, 79, 0.55);
+    --draft-bg: #fff8c5;
+    --draft-edge: #d4a72c;
+    --green: #1a7f37;
+    --green-soft: #dafbe1;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.5;
+    font-size: 14px;
+  }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; font-size: 0.85em; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .page { padding: 0 32px 80px; }
+  .container { max-width: 1700px; margin: 0 auto; padding-right: 60px; }
+
+  /* top nav with Approve / Comment */
+  nav.top {
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 32px;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+  }
+  nav.top .brand { font-weight: 600; }
+  nav.top .pill {
+    font-size: 11px;
+    background: var(--bg-alt);
+    color: var(--muted);
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--border-soft);
+  }
+  nav.top .spacer { flex: 1; }
+  nav.top button.action {
+    font-family: inherit;
+    font-size: 13px;
+    padding: 5px 14px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--ink);
+    cursor: pointer;
+    font-weight: 500;
+  }
+  nav.top button.action:hover { background: var(--bg-alt); }
+  nav.top button.action.approve { background: var(--green); color: white; border-color: var(--green); }
+  nav.top button.action.approve:hover { background: #15692c; }
+  nav.top button.action .badge {
+    display: inline-block;
+    background: rgba(0,0,0,0.08);
+    color: inherit;
+    padding: 0 6px;
+    border-radius: 9px;
+    font-size: 11px;
+    margin-left: 4px;
+    min-width: 18px;
+    text-align: center;
+  }
+  nav.top button.action.has-drafts { background: #fff4e0; border-color: #f0c870; color: #7d4e00; }
+  nav.top button.action.has-drafts:hover { background: #ffe9c0; }
+
+  /* floating outline nav on the right */
+  .outline-nav {
+    position: fixed;
+    right: 12px;
+    top: 80px;
+    z-index: 40;
+    width: 32px;
+    padding: 12px 6px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    transition: width 0.2s ease, padding 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    cursor: default;
+  }
+  .outline-nav:hover {
+    width: 280px;
+    padding: 14px 16px;
+    background: var(--bg);
+    border-color: var(--border);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+  }
+  .outline-nav .compact { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; }
+  .outline-nav:hover .compact { display: none; }
+  .outline-nav .compact .dash {
+    background: var(--muted);
+    height: 1.5px;
+    border-radius: 1px;
+    opacity: 0.65;
+  }
+  .outline-nav .compact .dash.h2 { width: 18px; opacity: 0.9; }
+  .outline-nav .compact .dash.h3 { width: 11px; margin-right: 1px; }
+
+  .outline-nav .full { display: none; }
+  .outline-nav:hover .full { display: block; }
+  .outline-nav .full .item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 4px;
+    font-size: 13px;
+    color: var(--ink);
+    text-decoration: none;
+    border-radius: 3px;
+  }
+  .outline-nav .full .item:hover { background: var(--bg-alt); text-decoration: none; }
+  .outline-nav .full .item.h2 { font-weight: 600; margin-top: 6px; }
+  .outline-nav .full .item.h3 { color: var(--muted); padding-left: 18px; font-weight: 400; font-size: 12.5px; }
+  .outline-nav .full .item.current { color: var(--accent); }
+
+  /* PR header */
+  .pr-header {
+    padding: 24px 0 12px;
+    border-bottom: 1px solid var(--border-soft);
+    margin-bottom: 28px;
+  }
+  .pr-header h1 { margin: 0 0 6px; font-size: 20px; font-weight: 600; }
+  .pr-header h1 .pr-num { color: var(--muted); font-weight: 400; }
+  .pr-header .meta { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .pr-header .meta .sep::before { content: "·"; margin: 0 4px; color: var(--faint); }
+  .pr-header .meta code { color: var(--ink); background: var(--bg-alt); padding: 1px 6px; border-radius: 3px; }
+  .pr-header .tldr { margin-top: 14px; color: var(--ink); max-width: 1100px; }
+  .chip { display: inline-block; background: #ddf4ff; color: var(--accent); border: 1px solid #b3e0ff; padding: 1px 8px; border-radius: 12px; font-size: 11px; font-weight: 500; }
+  .chip.warn { background: #fff8c5; color: #7d4e00; border-color: #f0dc88; }
+  .chip.muted { background: var(--bg-alt); color: var(--muted); border-color: var(--border-soft); }
+
+  /* group */
+  .group { margin-bottom: 60px; }
+  .group + .group { border-top: 1px dashed var(--border-soft); padding-top: 36px; }
+  .group-head { margin-bottom: 18px; }
+  .group-head .label { text-transform: uppercase; font-size: 11px; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; margin-bottom: 4px; }
+  .group-head h2 { margin: 0 0 8px; font-size: 18px; font-weight: 600; }
+  .group-note { color: var(--ink); max-width: 1100px; }
+  .group-note p { margin: 0 0 8px; }
+
+  /* mermaid */
+  .diagram { background: var(--bg-alt); border: 1px solid var(--border-soft); border-radius: 6px; padding: 18px 24px; margin: 18px 0; overflow: auto; }
+  .diagram-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; margin-bottom: 8px; }
+  .mermaid { text-align: center; }
+
+  /* review row */
+  .review-row { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 18px; margin-top: 18px; margin-bottom: 28px; align-items: start; }
+  @media (max-width: 1000px) {
+    .review-row { grid-template-columns: 1fr; }
+    .notes-col { position: static !important; height: auto !important; }
+    .notes-col .note { position: static !important; margin-bottom: 8px; }
+  }
+
+  .notes-col { position: relative; height: 100%; min-height: 100px; }
+  .note {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    background: var(--bg);
+    border-left: 2px solid var(--note-i);
+    padding: 8px 10px 8px 12px;
+    font-size: 12.5px;
+    line-height: 1.45;
+    cursor: pointer;
+    transition: max-height 0.18s ease, box-shadow 0.18s ease;
+    box-sizing: border-box;
+    border-radius: 0 4px 4px 0;
+    max-height: 320px;
+    overflow: hidden;
+  }
+  .note.q { border-left-color: var(--note-q); }
+  .note.t { border-left-color: var(--note-t); }
+  .note.d { border-left-color: var(--note-d); }
+  .note.bunched { max-height: 30px; overflow: hidden; padding-top: 6px; padding-bottom: 6px; background: var(--bg-alt); }
+  .note.bunched .body, .note.bunched .ask-agent { display: none; }
+  .note.expanded { max-height: 800px; box-shadow: 0 0 0 1px var(--accent), 0 4px 12px rgba(9, 105, 218, 0.12); background: var(--bg); z-index: 5; }
+
+  .note .head { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; }
+  .note .kind { font-weight: 700; text-transform: uppercase; font-size: 10px; letter-spacing: 0.06em; color: var(--note-i); }
+  .note.q .kind { color: var(--note-q); }
+  .note.t .kind { color: var(--note-t); }
+  .note.d .kind { color: var(--note-d); }
+  .note .lines { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--faint); margin-left: auto; }
+  .note .body { color: var(--ink); }
+  .note .body p { margin: 0 0 6px; }
+
+  /* ask agent: hover-only */
+  .note .ask-agent {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px dashed var(--border-soft);
+    font-size: 11px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    pointer-events: none;
+  }
+  .note:hover .ask-agent,
+  .note.expanded .ask-agent { opacity: 1; pointer-events: auto; }
+  .note .ask-agent button {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .note .ask-agent button:hover { background: var(--bg-alt); color: var(--ink); border-color: var(--muted); }
+
+  /* diff */
+  .diff { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: var(--bg); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+  .diff-head { background: var(--bg-alt); border-bottom: 1px solid var(--border); padding: 8px 12px; display: flex; align-items: center; gap: 10px; font-size: 13px; font-family: -apple-system, system-ui, sans-serif; }
+  .diff-head .path { font-family: ui-monospace, Menlo, monospace; font-weight: 500; }
+  .diff-head .badge { font-size: 11px; color: var(--muted); background: var(--bg); border: 1px solid var(--border-soft); padding: 1px 6px; border-radius: 3px; }
+  .diff-body { overflow-x: auto; }
+  .diff-body table { width: 100%; border-collapse: collapse; }
+  .diff-body td { padding: 0 8px; white-space: pre; vertical-align: top; }
+  .diff-body .gutter {
+    width: 1%;
+    min-width: 44px;
+    text-align: right;
+    color: var(--faint);
+    user-select: none;
+    background: var(--bg-alt);
+    border-right: 1px solid var(--border-soft);
+    font-size: 11.5px;
+    padding-right: 8px;
+    padding-left: 8px;
+    position: relative;
+  }
+  .diff-body .gutter.gutter-old { border-right: none; }
+  .diff-body tr.add .gutter { background: var(--add-num); color: #2e7235; }
+  .diff-body tr.del .gutter { background: var(--del-num); color: #a13335; }
+  .diff-body tr.add td.code { background: var(--add-bg); }
+  .diff-body tr.del td.code { background: var(--del-bg); }
+  .diff-body tr.line { transition: background 0.15s ease; }
+  .diff-body tr.highlighted td.code { background: var(--hl) !important; }
+  .diff-body tr.highlighted .gutter { background: var(--hl) !important; color: var(--ink); }
+
+  /* line hover: + button to add note/comment */
+  .diff-body tr.line .code { position: relative; }
+  .diff-body tr.line .add-line-action {
+    position: absolute;
+    left: -20px;
+    top: 1px;
+    width: 18px;
+    height: 18px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 3px;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+    font-family: inherit;
+    font-weight: 600;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .diff-body tr.line:hover .add-line-action { opacity: 1; }
+
+  /* expand context rows — unified style */
+  .diff-body tr.expand td {
+    background: var(--hunk-bg);
+    color: var(--hunk-ink);
+    font-size: 11.5px;
+    padding: 0;
+    border-top: 1px solid var(--border-soft);
+    border-bottom: 1px solid var(--border-soft);
+    font-family: -apple-system, system-ui, sans-serif;
+  }
+  .expand-bar {
+    display: flex;
+    align-items: stretch;
+    min-height: 28px;
+  }
+  .expand-bar .arrows {
+    display: flex;
+    align-items: stretch;
+    border-right: 1px solid var(--border-soft);
+    background: var(--bg-alt);
+  }
+  .expand-bar .arrows button {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 0 10px;
+    font-size: 13px;
+    line-height: 1;
+    font-family: inherit;
+    transition: background 0.1s ease, color 0.1s ease;
+  }
+  .expand-bar .arrows button:hover { background: var(--bg); color: var(--accent); }
+  .expand-bar .arrows button:disabled { opacity: 0.35; cursor: default; }
+  .expand-bar .arrows button + button { border-left: 1px solid var(--border-soft); }
+  .expand-bar .meta {
+    padding: 6px 12px;
+    color: var(--hunk-ink);
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 11.5px;
+    opacity: 0.85;
+    flex: 1;
+  }
+
+  /* draft comment block (was: suggestion) */
+  .diff-body tr.draft td { background: transparent; padding: 8px 8px 12px 8px; border-top: 1px solid var(--border-soft); }
+  .draft-block {
+    background: var(--draft-bg);
+    border: 1px solid var(--draft-edge);
+    border-radius: 5px;
+    padding: 10px 12px;
+    font-family: -apple-system, system-ui, sans-serif;
+    font-size: 13px;
+    white-space: normal;
+  }
+  .draft-block .head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 11px;
+    color: #7d4e00;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 700;
+  }
+  .draft-block .ref { margin-left: auto; font-family: ui-monospace, Menlo, monospace; }
+  .draft-block .body { margin-bottom: 8px; color: var(--ink); }
+  .draft-block .suggestion {
+    background: var(--bg);
+    border: 1px solid #e0c878;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 12px;
+    margin-bottom: 8px;
+    white-space: pre;
+    overflow-x: auto;
+  }
+  .draft-block .suggestion .label {
+    display: block;
+    font-family: -apple-system, system-ui, sans-serif;
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+  }
+  .draft-block .suggestion .add { background: var(--add-bg); display: block; }
+  .draft-block .suggestion .del { background: var(--del-bg); display: block; }
+  .draft-block .actions { display: flex; gap: 6px; align-items: center; font-size: 12px; }
+  .draft-block .actions button {
+    font-family: inherit;
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    cursor: pointer;
+    color: var(--ink);
+  }
+  .draft-block .actions button.primary { background: var(--green); color: white; border-color: var(--green); }
+  .draft-block .actions button.primary:hover { background: #15692c; }
+  .draft-block .actions button:hover { background: var(--bg-alt); }
+  .draft-block .actions .ask {
+    margin-left: auto;
+    color: var(--muted);
+    background: transparent;
+    border-color: transparent;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+  }
+  .draft-block:hover .actions .ask { opacity: 1; }
+  .draft-block.queued { border-color: var(--green); background: var(--green-soft); }
+  .draft-block.queued .head { color: var(--green); }
+  .draft-block.dismissed { opacity: 0.45; background: #f3f3f3; border-color: var(--border); }
+
+  /* inline editor for new note/comment */
+  .diff-body tr.editor td {
+    background: var(--bg-alt);
+    border-top: 1px solid var(--border-soft);
+    padding: 10px 12px;
+    white-space: normal;
+    font-family: -apple-system, system-ui, sans-serif;
+  }
+  .editor-box { background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 8px 10px; }
+  .editor-box .kind-tabs { display: flex; gap: 0; margin-bottom: 8px; font-size: 12px; }
+  .editor-box .kind-tabs button {
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 4px 10px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+  }
+  .editor-box .kind-tabs button.active { background: var(--bg); color: var(--ink); border-bottom-color: var(--bg); font-weight: 600; }
+  .editor-box .kind-tabs button:first-child { border-radius: 4px 0 0 0; }
+  .editor-box .kind-tabs button:last-child { border-radius: 0 4px 0 0; border-left: none; }
+  .editor-box textarea {
+    width: 100%;
+    min-height: 60px;
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-family: inherit;
+    font-size: 13px;
+    resize: vertical;
+    background: var(--bg);
+  }
+  .editor-box .editor-actions { display: flex; gap: 6px; margin-top: 8px; }
+  .editor-box .editor-actions button {
+    font-family: inherit; font-size: 12px;
+    padding: 4px 12px; border-radius: 3px;
+    border: 1px solid var(--border);
+    background: var(--bg); cursor: pointer; color: var(--ink);
+  }
+  .editor-box .editor-actions button.primary { background: var(--accent); color: white; border-color: var(--accent); }
+  .editor-box .editor-actions button.primary:hover { background: #0850b0; }
+
+  /* design notes */
+  .design-notes { border-top: 2px solid var(--border); padding-top: 32px; margin-top: 48px; color: var(--muted); font-size: 13px; max-width: 1100px; }
+  .design-notes h2 { color: var(--ink); font-size: 16px; margin: 0 0 12px; }
+  .design-notes h3 { color: var(--ink); font-size: 13px; margin: 18px 0 6px; }
+  .design-notes ul { padding-left: 22px; }
+  .design-notes li { margin-bottom: 6px; }
+
+  .kw { background: rgba(255, 230, 100, 0.35); padding: 0 2px; border-radius: 2px; }
+
+  /* inline agent thread */
+  .diff-body tr.thread td {
+    background: #f6f0ff;
+    border-top: 1px solid #d8c8f0;
+    padding: 8px 12px;
+    white-space: normal;
+    font-family: -apple-system, system-ui, sans-serif;
+  }
+  .thread-box {
+    background: var(--bg);
+    border: 1px solid #c8b8e8;
+    border-left: 3px solid #8b5cf6;
+    border-radius: 5px;
+    padding: 10px 12px;
+    font-size: 13px;
+    position: relative;
+  }
+  .thread-box .thread-head {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6b46c1;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .thread-box .thread-head .ref { color: var(--muted); font-family: ui-monospace, Menlo, monospace; margin-left: 6px; font-weight: 400; }
+  .thread-box .close {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 16px;
+    line-height: 1;
+    padding: 0 4px;
+  }
+  .thread-box .close:hover { color: var(--ink); }
+  .thread-box .msg { margin-bottom: 8px; line-height: 1.5; }
+  .thread-box .msg.user { font-size: 12.5px; color: var(--muted); padding-left: 18px; position: relative; }
+  .thread-box .msg.user::before { content: "→"; position: absolute; left: 0; top: 0; color: var(--faint); }
+  .thread-box .msg.agent { font-size: 13px; color: var(--ink); padding-left: 18px; position: relative; }
+  .thread-box .msg.agent::before { content: "🤖"; position: absolute; left: 0; top: 0; }
+  .thread-box .reply { display: flex; gap: 6px; margin-top: 8px; align-items: stretch; }
+  .thread-box .reply textarea {
+    flex: 1;
+    resize: vertical;
+    min-height: 32px;
+    font-size: 12.5px;
+    padding: 5px 8px;
+    border: 1px solid var(--border-soft);
+    border-radius: 3px;
+    font-family: inherit;
+    background: var(--bg);
+  }
+  .thread-box .reply button {
+    font-size: 12px;
+    padding: 4px 12px;
+    border-radius: 3px;
+    border: 1px solid #8b5cf6;
+    background: #8b5cf6;
+    color: white;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .thread-box .reply button:hover { background: #7c3aed; }
+  .thread-box .reply button.secondary { background: var(--bg); color: var(--muted); border-color: var(--border); }
+  .thread-box .reply button.secondary:hover { background: var(--bg-alt); color: var(--ink); }
+</style>
+</head>
+<body>
+
+<nav class="top">
+  <span class="brand">Review Surface</span>
+  <span class="pill">prototype v04</span>
+  <span class="pill mono">filadd/scheduler-api#323</span>
+  <span class="spacer"></span>
+  <button class="action" id="comment-btn" onclick="submitComments()">💬 Comment <span class="badge" id="comment-count">0</span></button>
+  <button class="action approve" onclick="approvePR()">✓ Approve</button>
+</nav>
+
+<aside class="outline-nav">
+  <div class="compact">
+    <span class="dash h2"></span>
+    <span class="dash h3"></span>
+    <span class="dash h3"></span>
+    <span class="dash h3"></span>
+    <span class="dash h2"></span>
+    <span class="dash h3"></span>
+    <span class="dash h3"></span>
+    <span class="dash h2"></span>
+  </div>
+  <div class="full">
+    <a class="item h2" href="#base">📐 Base context</a>
+    <a class="item h3" href="#base-erd">Data model ERD</a>
+    <a class="item h3" href="#base-flow">scheduling_flow.py</a>
+    <a class="item h3" href="#base-service">service.py</a>
+    <a class="item h2" href="#entry-webhook">🔌 Calendly webhook</a>
+    <a class="item h3" href="#webhook-seq">Sequence diagram</a>
+    <a class="item h3" href="#webhook-event">event.py</a>
+    <a class="item h2" href="#notes">📝 Design notes</a>
+  </div>
+</aside>
+
+<div class="page">
+<div class="container">
+
+<header class="pr-header">
+  <h1>Scheduling Flow Engine — Foundation <span class="pr-num">#323</span></h1>
+  <div class="meta">
+    <code>feat/scheduling-flow-engine-foundation</code>
+    → <code>develop</code>
+    <span class="sep"></span>
+    <span>+9,322 / −5,622 across 100 files</span>
+    <span class="sep"></span>
+    <span>by <code>aguizquierdo</code></span>
+    <span class="chip muted">no PR body</span>
+    <span class="chip warn">context external</span>
+  </div>
+  <div class="tldr">
+    Foundation for the pre-session orchestrator. Introduces 4 MySQL tables (<code>scheduling_flow</code>, <code>scheduling_flow_step</code>, <code>scheduling_flow_step_transition</code>, <code>scheduling_flow_run</code>), the new <code>POST /scheduling-flow-runs/</code> endpoint family, and a minimal Calendly-webhook hook to link bookings back to runs. <code>legacy_*</code> endpoints split off so existing services keep working unchanged.
+  </div>
+</header>
+
+<!-- ──────────────────────────── Group 1: Base context ──────────────────────────── -->
+<section class="group" id="base">
+  <header class="group-head">
+    <div class="label">Base context</div>
+    <h2>The flow engine data model</h2>
+    <div class="group-note">
+      <p>Four new tables and one extended one. <strong>Read this first</strong> — every endpoint and service in the rest of the PR operates on these entities. From the scope doc: <em>"transiciones lineales sólo — puntero <code>next_step_id</code>, sin condiciones, sin DSL"</em>.</p>
+    </div>
+  </header>
+
+  <div class="diagram" id="base-erd">
+    <div class="diagram-label">ERD · derived from diff + scope doc</div>
+    <div class="mermaid">
+erDiagram
+    service ||--o{ scheduling_flow : "has"
+    scheduling_flow ||--o| scheduling_flow_step : "entry_step_id"
+    scheduling_flow ||--|{ scheduling_flow_step : "composed_of"
+    scheduling_flow_step ||--o| scheduling_flow_step_transition : "from (UNIQUE)"
+    scheduling_flow_step ||--o{ scheduling_flow_step_transition : "to"
+    scheduling_flow ||--o{ scheduling_flow_run : "executed_as"
+    scheduling_flow_run }o--o| session : "produces"
+    service {
+        int id PK
+        string slug
+    }
+    scheduling_flow {
+        string id PK "ULID"
+        int service_id FK
+        string entry_step_id FK
+        bool enabled
+    }
+    scheduling_flow_step {
+        string id PK "ULID"
+        string flow_id FK
+        enum step_type
+        json config
+    }
+    scheduling_flow_step_transition {
+        string id PK "ULID"
+        string from_step_id FK "UNIQUE"
+        string to_step_id FK
+    }
+    scheduling_flow_run {
+        string id PK "ULID"
+        int user_id
+        string flow_id FK
+        int session_id FK "nullable"
+    }
+    </div>
+  </div>
+
+  <div class="review-row" id="base-flow">
+    <div class="notes-col" data-notes-col>
+      <div class="note t" data-from="13" data-to="20" onclick="toggleNote(this, event)">
+        <div class="head"><span class="kind">Pattern</span><span class="lines">L13–20</span></div>
+        <div class="body">
+          <p>ULID primary keys (<code>String(26)</code>, <code>generate_ulid</code>) across all three new tables. Existing tables (<code>service</code>) use auto-increment ints — this is a deliberate new convention for the flow engine.</p>
+        </div>
+        <div class="ask-agent"><button onclick="askAgent(event, 'ULID PK convention')">🗨 Ask agent</button></div>
+      </div>
+
+      <div class="note i" data-from="21" data-to="26" onclick="toggleNote(this, event)">
+        <div class="head"><span class="kind">Note</span><span class="lines">L21–26</span></div>
+        <div class="body">
+          <p>Self-referential FK with <code>use_alter=True</code> — needed because <code>scheduling_flow</code> and <code>scheduling_flow_step</code> reference each other circularly. The named constraint lets Alembic drop it explicitly during migrations.</p>
+        </div>
+        <div class="ask-agent"><button onclick="askAgent(event, 'use_alter circular FK')">🗨 Ask agent</button></div>
+      </div>
+
+      <div class="note q" data-from="43" data-to="45" onclick="toggleNote(this, event)">
+        <div class="head"><span class="kind">Question</span><span class="lines">L43–45</span></div>
+        <div class="body">
+          <p>Each step's typed config lives in a single <code>JSON</code> column. How is the per-<code>step_type</code> schema enforced — on write in Python, or via DB constraint? Trace to the service layer.</p>
+        </div>
+        <div class="ask-agent"><button onclick="askAgent(event, 'step config schema enforcement')">🗨 Ask agent</button></div>
+      </div>
+
+      <div class="note q" data-from="63" data-to="66" onclick="toggleNote(this, event)">
+        <div class="head"><span class="kind">Question</span><span class="lines">L63–66</span></div>
+        <div class="body">
+          <p><code>unique=True</code> on <code>from_step_id</code> means <strong>one transition per source step</strong> — a hard linearity guarantee at the schema level. When scope 2 lands (conditional transitions), this constraint will need to be dropped.</p>
+        </div>
+        <div class="ask-agent"><button onclick="askAgent(event, 'from_step_id unique constraint future scope')">🗨 Ask agent</button></div>
+      </div>
+    </div>
+
+    <div class="diff">
+      <div class="diff-head">
+        <span class="path">app/models/scheduling_flow.py</span>
+        <span class="badge">new file · +88</span>
+      </div>
+      <div class="diff-body">
+        <table>
+          <tr class="expand">
+            <td colspan="3">
+              <div class="expand-bar">
+                <div class="arrows">
+                  <button disabled title="No lines above">↑</button>
+                  <button disabled title="No lines above">↕</button>
+                  <button onclick="expandContext(this, 'down')" title="Expand 50 lines down">↓</button>
+                </div>
+                <div class="meta">@@ file starts here (new) @@</div>
+              </div>
+            </td>
+          </tr>
+          <tr class="line add" data-line="1"><td class="gutter gutter-old"></td><td class="gutter">1</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 1)" title="Add note or comment">+</button>+from datetime import datetime</td></tr>
+          <tr class="line add" data-line="2"><td class="gutter gutter-old"></td><td class="gutter">2</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 2)">+</button>+from typing import Any</td></tr>
+          <tr class="line add" data-line="3"><td class="gutter gutter-old"></td><td class="gutter">3</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 3)">+</button>+</td></tr>
+          <tr class="line add" data-line="4"><td class="gutter gutter-old"></td><td class="gutter">4</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 4)">+</button>+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, JSON, String</td></tr>
+          <tr class="line add" data-line="5"><td class="gutter gutter-old"></td><td class="gutter">5</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 5)">+</button>+from sqlalchemy.orm import Mapped, mapped_column</td></tr>
+          <tr class="line add" data-line="6"><td class="gutter gutter-old"></td><td class="gutter">6</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 6)">+</button>+from sqlalchemy.sql import func</td></tr>
+          <tr class="line add" data-line="7"><td class="gutter gutter-old"></td><td class="gutter">7</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 7)">+</button>+</td></tr>
+          <tr class="line add" data-line="8"><td class="gutter gutter-old"></td><td class="gutter">8</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 8)">+</button>+from app.schemas.scheduling_flow_step import StepType</td></tr>
+          <tr class="line add" data-line="9"><td class="gutter gutter-old"></td><td class="gutter">9</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 9)">+</button>+</td></tr>
+          <tr class="line add" data-line="10"><td class="gutter gutter-old"></td><td class="gutter">10</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 10)">+</button>+from .base import Base, UnsignedInt, generate_ulid</td></tr>
+          <tr class="line add" data-line="11"><td class="gutter gutter-old"></td><td class="gutter">11</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 11)">+</button>+</td></tr>
+          <tr class="line add" data-line="12"><td class="gutter gutter-old"></td><td class="gutter">12</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 12)">+</button>+</td></tr>
+          <tr class="line add" data-line="13"><td class="gutter gutter-old"></td><td class="gutter">13</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 13)">+</button>+class SchedulingFlow(Base):</td></tr>
+          <tr class="line add" data-line="14"><td class="gutter gutter-old"></td><td class="gutter">14</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 14)">+</button>+    __tablename__ = "scheduling_flow"</td></tr>
+          <tr class="line add" data-line="15"><td class="gutter gutter-old"></td><td class="gutter">15</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 15)">+</button>+    __mapper_args__ = {"eager_defaults": True}</td></tr>
+          <tr class="line add" data-line="16"><td class="gutter gutter-old"></td><td class="gutter">16</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 16)">+</button>+</td></tr>
+          <tr class="line add" data-line="17"><td class="gutter gutter-old"></td><td class="gutter">17</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 17)">+</button>+    id: Mapped[str] = mapped_column(String(26), primary_key=True, default=generate_ulid)</td></tr>
+          <tr class="line add" data-line="18"><td class="gutter gutter-old"></td><td class="gutter">18</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 18)">+</button>+    service_id: Mapped[int] = mapped_column(</td></tr>
+          <tr class="line add" data-line="19"><td class="gutter gutter-old"></td><td class="gutter">19</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 19)">+</button>+        UnsignedInt, ForeignKey("service.id"), nullable=False, index=True,</td></tr>
+          <tr class="line add" data-line="20"><td class="gutter gutter-old"></td><td class="gutter">20</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 20)">+</button>+    )</td></tr>
+          <tr class="line add" data-line="21"><td class="gutter gutter-old"></td><td class="gutter">21</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 21)">+</button>+    entry_step_id: Mapped[str | None] = mapped_column(</td></tr>
+          <tr class="line add" data-line="22"><td class="gutter gutter-old"></td><td class="gutter">22</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 22)">+</button>+        String(26),</td></tr>
+          <tr class="line add" data-line="23"><td class="gutter gutter-old"></td><td class="gutter">23</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 23)">+</button>+        ForeignKey("scheduling_flow_step.id", use_alter=True,</td></tr>
+          <tr class="line add" data-line="24"><td class="gutter gutter-old"></td><td class="gutter">24</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 24)">+</button>+                   name="fk_scheduling_flow_entry_step_id_scheduling_flow_step"),</td></tr>
+          <tr class="line add" data-line="25"><td class="gutter gutter-old"></td><td class="gutter">25</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 25)">+</button>+        nullable=True,</td></tr>
+          <tr class="line add" data-line="26"><td class="gutter gutter-old"></td><td class="gutter">26</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 26)">+</button>+    )</td></tr>
+          <tr class="line add" data-line="27"><td class="gutter gutter-old"></td><td class="gutter">27</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 27)">+</button>+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)</td></tr>
+          <tr class="expand">
+            <td colspan="3">
+              <div class="expand-bar">
+                <div class="arrows">
+                  <button onclick="expandContext(this, 'up')" title="Expand 50 lines up">↑</button>
+                  <button onclick="expandContext(this, 'all')" title="Expand hidden section">↕</button>
+                  <button onclick="expandContext(this, 'down')" title="Expand 50 lines down">↓</button>
+                </div>
+                <div class="meta">@@ class SchedulingFlowStep starts at line 40 — 13 lines hidden @@</div>
+              </div>
+            </td>
+          </tr>
+          <tr class="line add" data-line="40"><td class="gutter gutter-old"></td><td class="gutter">40</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 40)">+</button>+class SchedulingFlowStep(Base):</td></tr>
+          <tr class="line add" data-line="41"><td class="gutter gutter-old"></td><td class="gutter">41</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 41)">+</button>+    __tablename__ = "scheduling_flow_step"</td></tr>
+          <tr class="line add" data-line="42"><td class="gutter gutter-old"></td><td class="gutter">42</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 42)">+</button>+    id: Mapped[str] = mapped_column(String(26), primary_key=True, default=generate_ulid)</td></tr>
+          <tr class="line add" data-line="43"><td class="gutter gutter-old"></td><td class="gutter">43</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 43)">+</button>+    flow_id: Mapped[str] = mapped_column(String(26), ForeignKey("scheduling_flow.id"), nullable=False, index=True)</td></tr>
+          <tr class="line add" data-line="44"><td class="gutter gutter-old"></td><td class="gutter">44</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 44)">+</button>+    step_type: Mapped[StepType] = mapped_column(Enum(StepType), nullable=False)</td></tr>
+          <tr class="line add" data-line="45"><td class="gutter gutter-old"></td><td class="gutter">45</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 45)">+</button>+    config: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default={})</td></tr>
+          <tr class="expand">
+            <td colspan="3">
+              <div class="expand-bar">
+                <div class="arrows">
+                  <button onclick="expandContext(this, 'up')">↑</button>
+                  <button onclick="expandContext(this, 'all')">↕</button>
+                  <button onclick="expandContext(this, 'down')">↓</button>
+                </div>
+                <div class="meta">@@ class SchedulingFlowStepTransition starts at line 60 — 14 lines hidden @@</div>
+              </div>
+            </td>
+          </tr>
+          <tr class="line add" data-line="60"><td class="gutter gutter-old"></td><td class="gutter">60</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 60)">+</button>+class SchedulingFlowStepTransition(Base):</td></tr>
+          <tr class="line add" data-line="61"><td class="gutter gutter-old"></td><td class="gutter">61</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 61)">+</button>+    __tablename__ = "scheduling_flow_step_transition"</td></tr>
+          <tr class="line add" data-line="62"><td class="gutter gutter-old"></td><td class="gutter">62</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 62)">+</button>+    id: Mapped[str] = mapped_column(String(26), primary_key=True, default=generate_ulid)</td></tr>
+          <tr class="line add" data-line="63"><td class="gutter gutter-old"></td><td class="gutter">63</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 63)">+</button>+    from_step_id: Mapped[str] = mapped_column(</td></tr>
+          <tr class="line add" data-line="64"><td class="gutter gutter-old"></td><td class="gutter">64</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 64)">+</button>+        String(26), ForeignKey("scheduling_flow_step.id"),</td></tr>
+          <tr class="line add" data-line="65"><td class="gutter gutter-old"></td><td class="gutter">65</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 65)">+</button>+        nullable=False, <span class="kw">unique=True</span>,</td></tr>
+          <tr class="line add" data-line="66"><td class="gutter gutter-old"></td><td class="gutter">66</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 66)">+</button>+    )</td></tr>
+          <tr class="line add" data-line="67"><td class="gutter gutter-old"></td><td class="gutter">67</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 67)">+</button>+    to_step_id: Mapped[str] = mapped_column(</td></tr>
+          <tr class="line add" data-line="68"><td class="gutter gutter-old"></td><td class="gutter">68</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 68)">+</button>+        String(26), ForeignKey("scheduling_flow_step.id"),</td></tr>
+          <tr class="line add" data-line="69"><td class="gutter gutter-old"></td><td class="gutter">69</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 69)">+</button>+        nullable=False, index=True,</td></tr>
+          <tr class="line add" data-line="70"><td class="gutter gutter-old"></td><td class="gutter">70</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 70)">+</button>+    )</td></tr>
+          <tr class="draft">
+            <td colspan="3">
+              <div class="draft-block">
+                <div class="head">
+                  <span>💬 Draft comment · agent-suggested</span>
+                  <span class="ref">L63–66</span>
+                </div>
+                <div class="body">
+                  Worth dropping a TODO referencing scope 2 — when conditional transitions land, this <code>unique=True</code> constraint must come off. Otherwise it'll cause a confusing migration later. Suggested change below.
+                </div>
+                <div class="suggestion">
+                  <span class="label">Suggested change (rendered inline in the PR comment)</span>
+<span class="del">-        nullable=False, unique=True,</span><span class="add">+        # TODO(scope-2): drop unique=True when conditional transitions land</span><span class="add">+        nullable=False, unique=True,</span></div>
+                <div class="actions">
+                  <button class="primary" onclick="addToDrafts(this)">Add to drafts</button>
+                  <button onclick="editDraft(this)">Edit</button>
+                  <button onclick="dismissDraft(this)">Dismiss</button>
+                  <button class="ask" onclick="askAgent(event, 'scope 2 transition TODO')">🗨 Ask agent</button>
+                </div>
+              </div>
+            </td>
+          </tr>
+          <tr class="expand">
+            <td colspan="3">
+              <div class="expand-bar">
+                <div class="arrows">
+                  <button onclick="expandContext(this, 'up')">↑</button>
+                  <button disabled>↕</button>
+                  <button disabled title="End of file">↓</button>
+                </div>
+                <div class="meta">@@ 18 more lines (timestamps) @@</div>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- service.py — the discrepancy -->
+  <div class="review-row" id="base-service">
+    <div class="notes-col" data-notes-col>
+      <div class="note d" data-from="0" data-to="0" onclick="toggleNote(this, event)">
+        <div class="head"><span class="kind">Discrepancy</span><span class="lines">whole file</span></div>
+        <div class="body">
+          <p>Scope doc says this PR adds <code>scheduling_mode</code> (Enum: sequential / multievent) on <code>service</code> as the bifurcation point between legacy and new code paths. <strong>The column is not in this diff.</strong> Either it was deferred, lives in a migration not shown, or the dispatch works differently.</p>
+        </div>
+        <div class="ask-agent"><button onclick="askAgent(event, 'missing scheduling_mode column')">🗨 Ask agent</button></div>
+      </div>
+
+      <div class="note i" data-from="35" data-to="37" onclick="toggleNote(this, event)">
+        <div class="head"><span class="kind">Note</span><span class="lines">L35–37</span></div>
+        <div class="body">
+          <p>New ORM relationship from Service to Event, <code>lazy="noload"</code>. <code>overlaps="service"</code> suppresses SQLAlchemy's relationship-conflict warning — there's another path between these models. Not load-bearing for this PR.</p>
+        </div>
+        <div class="ask-agent"><button onclick="askAgent(event, 'events relationship noload overlaps')">🗨 Ask agent</button></div>
+      </div>
+    </div>
+
+    <div class="diff">
+      <div class="diff-head">
+        <span class="path">app/models/service.py</span>
+        <span class="badge">+9 / −2</span>
+      </div>
+      <div class="diff-body">
+        <table>
+          <tr class="expand">
+            <td colspan="3">
+              <div class="expand-bar">
+                <div class="arrows">
+                  <button onclick="expandContext(this, 'up')">↑</button>
+                  <button disabled>↕</button>
+                  <button onclick="expandContext(this, 'down')">↓</button>
+                </div>
+                <div class="meta">@@ -1,9 +1,16 @@</div>
+              </div>
+            </td>
+          </tr>
+          <tr class="line add" data-line="1"><td class="gutter gutter-old"></td><td class="gutter">1</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 1)">+</button>+from __future__ import annotations</td></tr>
+          <tr class="line add" data-line="2"><td class="gutter gutter-old"></td><td class="gutter">2</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 2)">+</button>+</td></tr>
+          <tr class="line add" data-line="3"><td class="gutter gutter-old"></td><td class="gutter">3</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 3)">+</button>+from typing import TYPE_CHECKING</td></tr>
+          <tr class="line add" data-line="4"><td class="gutter gutter-old"></td><td class="gutter">4</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 4)">+</button>+</td></tr>
+          <tr class="line ctx" data-line="5"><td class="gutter gutter-old">1</td><td class="gutter">5</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 5)">+</button> from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, String, Text</td></tr>
+          <tr class="line del" data-line="del-2"><td class="gutter gutter-old">2</td><td class="gutter"></td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 2)">+</button>-from sqlalchemy.orm import relationship</td></tr>
+          <tr class="line add" data-line="6"><td class="gutter gutter-old"></td><td class="gutter">6</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 6)">+</button>+from sqlalchemy.orm import Mapped, relationship</td></tr>
+          <tr class="expand">
+            <td colspan="3">
+              <div class="expand-bar">
+                <div class="arrows">
+                  <button onclick="expandContext(this, 'up')">↑</button>
+                  <button onclick="expandContext(this, 'all')">↕</button>
+                  <button onclick="expandContext(this, 'down')">↓</button>
+                </div>
+                <div class="meta">@@ class Service — 25 lines hidden @@</div>
+              </div>
+            </td>
+          </tr>
+          <tr class="line ctx" data-line="34"><td class="gutter gutter-old">27</td><td class="gutter">34</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 34)">+</button> </td></tr>
+          <tr class="line add" data-line="35"><td class="gutter gutter-old"></td><td class="gutter">35</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 35)">+</button>+    events: Mapped[list["Event"]] = relationship(</td></tr>
+          <tr class="line add" data-line="36"><td class="gutter gutter-old"></td><td class="gutter">36</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 36)">+</button>+        "Event", lazy="noload", overlaps="service",</td></tr>
+          <tr class="line add" data-line="37"><td class="gutter gutter-old"></td><td class="gutter">37</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 37)">+</button>+    )</td></tr>
+          <tr class="draft">
+            <td colspan="3">
+              <div class="draft-block">
+                <div class="head">
+                  <span>💬 Draft comment · agent-suggested</span>
+                  <span class="ref">whole file</span>
+                </div>
+                <div class="body">
+                  Where is <code>scheduling_mode</code> from the scope doc? Worth raising on the PR — either it's deferred (out of foundation) or the dispatch story is different from what the doc describes.
+                </div>
+                <div class="actions">
+                  <button class="primary" onclick="addToDrafts(this)">Add to drafts</button>
+                  <button onclick="editDraft(this)">Edit</button>
+                  <button onclick="dismissDraft(this)">Dismiss</button>
+                  <button class="ask" onclick="askAgent(event, 'scheduling_mode discrepancy')">🗨 Ask agent</button>
+                </div>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ──────────────────────────── Group 2: Calendly webhook ──────────────────────────── -->
+<section class="group" id="entry-webhook">
+  <header class="group-head">
+    <div class="label">Entry point · External (webhook)</div>
+    <h2>Calendly webhook — link booking to run</h2>
+    <div class="group-note">
+      <p>When the student finishes booking in the Calendly embed, Calendly fires <code>invitee.created</code>. The handler creates the session as before, then — if the booking came from a flow — extracts the run id from UTM/prefill, links the session to the run, and advances the run to confirmation. Per scope: <em>"el webhook de Calendly se extiende mínimamente"</em>.</p>
+    </div>
+  </header>
+
+  <div class="diagram" id="webhook-seq">
+    <div class="diagram-label">Sequence · invitee.created path</div>
+    <div class="mermaid">
+sequenceDiagram
+    participant C as Calendly
+    participant W as Webhook Handler
+    participant S as Session Repo
+    participant R as Flow Run Service
+    C->>W: invitee.created (payload + UTM run_id)
+    W->>S: create_from_calendly(payload)
+    S-->>W: session
+    W->>W: extract run_id from UTM
+    alt run_id present
+        W->>R: link_session_to_run(run_id, session.id)
+        W->>R: advance_to_confirmation(run_id)
+    else no run_id
+        Note over W: booking outside a flow (legacy)
+    end
+    </div>
+  </div>
+
+  <div class="review-row" id="webhook-event">
+    <div class="notes-col" data-notes-col>
+      <div class="note t" data-from="15" data-to="15" onclick="toggleNote(this, event)">
+        <div class="head"><span class="kind">Note</span><span class="lines">L15</span></div>
+        <div class="body">
+          <p>Per scope: <em>"el run id viaja por prefill + UTM de Calendly"</em>. Verify <code>_extract_run_id_from_utm</code> handles both shapes.</p>
+        </div>
+        <div class="ask-agent"><button onclick="askAgent(event, 'run_id extraction shapes')">🗨 Ask agent</button></div>
+      </div>
+
+      <div class="note q" data-from="15" data-to="17" onclick="toggleNote(this, event)">
+        <div class="head"><span class="kind">Question</span><span class="lines">L15–17</span></div>
+        <div class="body">
+          <p>If <code>link_session_to_run</code> finds no run for the id (stale, replayed, fake), what happens? External integration — failure modes matter.</p>
+        </div>
+        <div class="ask-agent"><button onclick="askAgent(event, 'webhook failure modes')">🗨 Ask agent</button></div>
+      </div>
+
+      <div class="note i" data-from="15" data-to="17" onclick="toggleNote(this, event)">
+        <div class="head"><span class="kind">Note</span><span class="lines">L15–17</span></div>
+        <div class="body">
+          <p>Handler shape is intentionally small. Full webhook decomposition is scope 19. Don't suggest a refactor here.</p>
+        </div>
+        <div class="ask-agent"><button onclick="askAgent(event, 'webhook decomposition scope 19')">🗨 Ask agent</button></div>
+      </div>
+    </div>
+
+    <div class="diff">
+      <div class="diff-head">
+        <span class="path">app/endpoints/event.py</span>
+        <span class="badge">−147 · stripped down</span>
+      </div>
+      <div class="diff-body">
+        <table>
+          <tr class="expand">
+            <td colspan="3">
+              <div class="expand-bar">
+                <div class="arrows">
+                  <button onclick="expandContext(this, 'up')">↑</button>
+                  <button disabled>↕</button>
+                  <button onclick="expandContext(this, 'down')">↓</button>
+                </div>
+                <div class="meta">@@ -1,240 +1,93 @@ handle_invitee_created @@</div>
+              </div>
+            </td>
+          </tr>
+          <tr class="line del" data-line="del-12"><td class="gutter gutter-old">12</td><td class="gutter"></td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 12)">+</button>-async def handle_invitee_created(payload, session_repo, ...):</td></tr>
+          <tr class="line del" data-line="del-13"><td class="gutter gutter-old">13</td><td class="gutter"></td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 13)">+</button>-    # 200+ lines of legacy session-creation logic</td></tr>
+          <tr class="line del" data-line="del-14"><td class="gutter gutter-old">14</td><td class="gutter"></td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 14)">+</button>-    ...</td></tr>
+          <tr class="line add" data-line="12"><td class="gutter gutter-old"></td><td class="gutter">12</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 12)">+</button>+async def handle_invitee_created(payload, session_repo, run_service, ...):</td></tr>
+          <tr class="line add" data-line="13"><td class="gutter gutter-old"></td><td class="gutter">13</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 13)">+</button>+    session = await session_repo.create_from_calendly(payload)</td></tr>
+          <tr class="line add" data-line="14"><td class="gutter gutter-old"></td><td class="gutter">14</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 14)">+</button>+</td></tr>
+          <tr class="line add" data-line="15"><td class="gutter gutter-old"></td><td class="gutter">15</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 15)">+</button>+    if run_id := <span class="kw">_extract_run_id_from_utm</span>(payload):</td></tr>
+          <tr class="line add" data-line="16"><td class="gutter gutter-old"></td><td class="gutter">16</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 16)">+</button>+        await run_service.link_session_to_run(run_id, session.id)</td></tr>
+          <tr class="line add" data-line="17"><td class="gutter gutter-old"></td><td class="gutter">17</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 17)">+</button>+        await run_service.advance_to_confirmation(run_id)</td></tr>
+          <tr class="line add" data-line="18"><td class="gutter gutter-old"></td><td class="gutter">18</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 18)">+</button>+</td></tr>
+          <tr class="line add" data-line="19"><td class="gutter gutter-old"></td><td class="gutter">19</td><td class="code"><button class="add-line-action" onclick="openLineEditor(this, 19)">+</button>+    return session</td></tr>
+          <tr class="draft">
+            <td colspan="3">
+              <div class="draft-block">
+                <div class="head">
+                  <span>💬 Draft comment · agent-suggested</span>
+                  <span class="ref">L15</span>
+                </div>
+                <div class="body">
+                  Add explicit handling for the case where <code>_extract_run_id_from_utm</code> raises on malformed input — otherwise an unhandled exception means Calendly retries indefinitely.
+                </div>
+                <div class="suggestion">
+                  <span class="label">Suggested change</span>
+<span class="add">+    try:</span><span class="add">+        run_id = _extract_run_id_from_utm(payload)</span><span class="add">+    except (ValueError, KeyError) as exc:</span><span class="add">+        sentry_sdk.capture_exception(exc)</span><span class="add">+        run_id = None</span><span class="add">+    if run_id:</span></div>
+                <div class="actions">
+                  <button class="primary" onclick="addToDrafts(this)">Add to drafts</button>
+                  <button onclick="editDraft(this)">Edit</button>
+                  <button onclick="dismissDraft(this)">Dismiss</button>
+                  <button class="ask" onclick="askAgent(event, 'webhook error handling')">🗨 Ask agent</button>
+                </div>
+              </div>
+            </td>
+          </tr>
+          <tr class="expand">
+            <td colspan="3">
+              <div class="expand-bar">
+                <div class="arrows">
+                  <button onclick="expandContext(this, 'up')">↑</button>
+                  <button disabled>↕</button>
+                  <button onclick="expandContext(this, 'down')">↓</button>
+                </div>
+                <div class="meta">@@ rest of file (~70 lines) @@</div>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="notes" class="design-notes">
+<h2>Notes from v04</h2>
+
+<h3>What changed from v03</h3>
+<ul>
+  <li><strong>Top nav</strong> now carries the PR-level review actions: <code>Approve</code> and <code>Comment (N)</code>. The N badge counts drafts queued during the session.</li>
+  <li><strong>Floating outline nav</strong> on the right — compact dashes by default (Notion-minimap style), expands to a labeled outline on hover.</li>
+  <li><strong>Line-hover "+" affordance restored</strong> — small button appears on row hover. Click opens an inline editor with two tabs: <em>Ask agent</em> (private, scoped to this line) or <em>Comment for PR</em> (queues a draft).</li>
+  <li><strong>"Ask agent" on side notes is hover-only now</strong> — appears when hovering the note (or when expanded). Removes visual noise.</li>
+  <li><strong>Suggestion blocks → "Draft comments"</strong>. The framing changed: these are not in-page code patches, they are PR comments. Accepting adds them to the comment queue (counter increments in top nav). The optional suggested-change inside is rendered as a labeled block that would become a GitHub <code>```suggestion</code> snippet in the actual comment.</li>
+  <li><strong>Expand-context UI standardized</strong>: every expandable gap now uses the same arrow trio in the gutter — ↑ (50 up), ↕ (full), ↓ (50 down) — with disabled states at file boundaries. Used at top, between hunks, and at bottom.</li>
+</ul>
+
+<h3>Things to try in the page</h3>
+<ul>
+  <li>Hover the right edge of the page to expand the outline nav.</li>
+  <li>Hover any diff line to see the "+" affordance; click it to open the inline editor (Ask agent / Comment for PR tabs).</li>
+  <li>"Add to drafts" on any of the yellow draft-comment blocks — the header counter increments and the block turns green ("Queued").</li>
+  <li>Click any note — it expands and highlights the corresponding line range. Hover an expanded note to reveal "Ask agent".</li>
+  <li>Click "Approve" or "Comment (N)" in the top nav — alert shows what they'd do.</li>
+</ul>
+
+<h3>Open shape questions for v05+</h3>
+<ul>
+  <li>Where does the comment queue live? Clicking "Comment (N)" should probably open a panel listing the queued drafts with edit/remove/submit-all.</li>
+  <li>Agent-asked questions: are they ephemeral (closed when you move on) or persistent (sit on the line as a side-note for later)? The line-hover editor's "Ask agent" tab needs a destination model.</li>
+  <li>Outline nav: should it scroll-track (highlight current section as the page scrolls)? With many groups this becomes important.</li>
+  <li>Tachikoma is still pending as a second example. Its background-watcher entries will be a good stress test of the shape.</li>
+</ul>
+
+</section>
+
+</div>
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: true, theme: 'neutral', securityLevel: 'loose' });
+  window.addEventListener('load', () => setTimeout(layoutAllNotes, 400));
+  window.addEventListener('resize', () => layoutAllNotes());
+</script>
+
+<script>
+  let draftCount = 0;
+
+  function layoutAllNotes() {
+    document.querySelectorAll('.review-row').forEach(layoutNotesRow);
+  }
+
+  function layoutNotesRow(row) {
+    const notesCol = row.querySelector('.notes-col');
+    const diff = row.querySelector('.diff');
+    if (!notesCol || !diff) return;
+    const notes = Array.from(notesCol.querySelectorAll('.note'));
+    const colRect = notesCol.getBoundingClientRect();
+    const diffRect = diff.getBoundingClientRect();
+    const offsetDelta = diffRect.top - colRect.top;
+    notesCol.style.height = diff.offsetHeight + 'px';
+    let prevBottom = 0;
+    notes.forEach(note => {
+      const fromAttr = note.dataset.from;
+      let desiredTop;
+      if (fromAttr === '0') {
+        desiredTop = offsetDelta;
+      } else {
+        const line = diff.querySelector(`tr[data-line="${fromAttr}"]`);
+        if (line) {
+          const lineRect = line.getBoundingClientRect();
+          desiredTop = lineRect.top - colRect.top;
+        } else {
+          desiredTop = prevBottom + 8;
+        }
+      }
+      if (desiredTop < prevBottom + 4) {
+        note.classList.add('bunched');
+        note.style.top = (prevBottom + 4) + 'px';
+      } else {
+        if (!note.classList.contains('expanded')) note.classList.remove('bunched');
+        note.style.top = desiredTop + 'px';
+      }
+      prevBottom = parseFloat(note.style.top) + note.offsetHeight;
+    });
+  }
+
+  function toggleNote(note, ev) {
+    if (ev) ev.stopPropagation();
+    const wasExpanded = note.classList.contains('expanded');
+    const row = note.closest('.review-row');
+    row.querySelectorAll('.note.expanded').forEach(n => n.classList.remove('expanded'));
+    row.querySelectorAll('tr.highlighted').forEach(t => t.classList.remove('highlighted'));
+    if (!wasExpanded) {
+      note.classList.add('expanded');
+      note.classList.remove('bunched');
+      highlightRange(row, note.dataset.from, note.dataset.to);
+    }
+    layoutNotesRow(row);
+  }
+
+  function highlightRange(row, fromAttr, toAttr) {
+    if (fromAttr === '0' || !fromAttr) return;
+    const from = parseInt(fromAttr);
+    const to = parseInt(toAttr || fromAttr);
+    for (let i = from; i <= to; i++) {
+      const line = row.querySelector(`tr[data-line="${i}"]`);
+      if (line) line.classList.add('highlighted');
+    }
+  }
+
+  function expandContext(btn, direction) {
+    const expandRow = btn.closest('tr');
+    const tbody = expandRow.parentNode;
+    const placeholder = document.createElement('tr');
+    placeholder.classList.add('line', 'ctx');
+    const label = direction === 'all' ? 'full hidden section' : `50 lines ${direction}`;
+    placeholder.innerHTML = `<td class="gutter gutter-old">…</td><td class="gutter">…</td><td class="code" style="color:#999; font-style:italic"> (${label} — reconstructed from local repo)</td>`;
+    tbody.insertBefore(placeholder, expandRow);
+    btn.disabled = true;
+    btn.style.opacity = 0.35;
+    setTimeout(() => layoutAllNotes(), 0);
+  }
+
+  function openLineEditor(btn, lineNum) {
+    const lineRow = btn.closest('tr');
+    // collapse any existing editor in this diff
+    lineRow.closest('.diff').querySelectorAll('tr.editor').forEach(e => e.remove());
+
+    const editorRow = document.createElement('tr');
+    editorRow.classList.add('editor');
+    editorRow.innerHTML = `
+      <td colspan="3">
+        <div class="editor-box" data-mode="comment">
+          <div class="kind-tabs">
+            <button onclick="switchEditorMode(this, 'agent')">🗨 Ask agent</button>
+            <button class="active" onclick="switchEditorMode(this, 'comment')">💬 Comment for PR</button>
+          </div>
+          <textarea placeholder="Type your comment for the PR..."></textarea>
+          <div class="editor-actions">
+            <button class="primary" onclick="submitInlineEntry(this, ${lineNum})">Submit</button>
+            <button onclick="cancelInlineEntry(this)">Cancel</button>
+          </div>
+        </div>
+      </td>`;
+    lineRow.parentNode.insertBefore(editorRow, lineRow.nextSibling);
+    editorRow.querySelector('textarea').focus();
+  }
+
+  function switchEditorMode(btn, mode) {
+    const box = btn.closest('.editor-box');
+    box.dataset.mode = mode;
+    box.querySelectorAll('.kind-tabs button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const ta = box.querySelector('textarea');
+    ta.placeholder = mode === 'agent'
+      ? "Ask the agent about this code... (scoped to this line)"
+      : "Type your comment for the PR...";
+  }
+
+  function submitInlineEntry(btn, lineNum) {
+    const box = btn.closest('.editor-box');
+    const mode = box.dataset.mode;
+    const text = box.querySelector('textarea').value.trim();
+    if (!text) return;
+    const editorRow = btn.closest('tr.editor');
+    const tbody = editorRow.parentNode;
+    if (mode === 'comment') {
+      incrementDrafts();
+      // insert a draft-comment block inline
+      const draftRow = document.createElement('tr');
+      draftRow.classList.add('draft');
+      draftRow.innerHTML = `
+        <td colspan="3">
+          <div class="draft-block queued">
+            <div class="head"><span>✓ Queued for PR · your comment</span><span class="ref">L${lineNum}</span></div>
+            <div class="body">${escapeHtml(text)}</div>
+          </div>
+        </td>`;
+      tbody.insertBefore(draftRow, editorRow);
+    } else {
+      insertAgentThread(editorRow, lineNum, text);
+    }
+    editorRow.remove();
+  }
+
+  function cancelInlineEntry(btn) {
+    btn.closest('tr.editor').remove();
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── Inline agent threads ────────────────────────────────────────
+
+  function insertAgentThread(beforeRow, lineNum, userText) {
+    const tbody = beforeRow.parentNode;
+    const threadRow = document.createElement('tr');
+    threadRow.classList.add('thread');
+    threadRow.innerHTML = `
+      <td colspan="3">
+        <div class="thread-box">
+          <div class="thread-head">🗨 Agent thread <span class="ref">L${lineNum}</span></div>
+          <button class="close" onclick="closeThread(this)" title="Close">×</button>
+          <div class="msg user">${escapeHtml(userText)}</div>
+          <div class="msg agent">${mockAgentReply(userText)}</div>
+          <div class="reply">
+            <textarea placeholder="Follow up..."></textarea>
+            <button onclick="sendThreadReply(this)">Send</button>
+          </div>
+        </div>
+      </td>`;
+    tbody.insertBefore(threadRow, beforeRow);
+    setTimeout(() => layoutAllNotes(), 0);
+  }
+
+  function openAgentThreadOnNote(noteBtn, topic) {
+    const note = noteBtn.closest('.note');
+    const row = note.closest('.review-row');
+    const diff = row.querySelector('.diff');
+    const lineNum = note.dataset.from;
+    const target = lineNum && lineNum !== '0'
+      ? diff.querySelector(`tr[data-line="${lineNum}"]`)
+      : diff.querySelector('.diff-body tbody tr.line');
+    if (!target) return;
+    insertAgentThread(target.nextSibling || target, lineNum || '?', topic);
+  }
+
+  function openAgentThreadOnDraft(btn, topic) {
+    const draftRow = btn.closest('tr.draft');
+    const refEl = draftRow.querySelector('.ref');
+    const lineNum = refEl ? refEl.textContent.replace(/^L/, '') : '?';
+    insertAgentThread(draftRow.nextSibling || draftRow, lineNum, topic);
+  }
+
+  function sendThreadReply(btn) {
+    const box = btn.closest('.thread-box');
+    const ta = box.querySelector('textarea');
+    const text = ta.value.trim();
+    if (!text) return;
+    const replyBox = btn.closest('.reply');
+    const userMsg = document.createElement('div');
+    userMsg.className = 'msg user';
+    userMsg.textContent = text;
+    const agentMsg = document.createElement('div');
+    agentMsg.className = 'msg agent';
+    agentMsg.innerHTML = mockAgentReply(text);
+    replyBox.parentNode.insertBefore(userMsg, replyBox);
+    replyBox.parentNode.insertBefore(agentMsg, replyBox);
+    ta.value = '';
+    ta.focus();
+    setTimeout(() => layoutAllNotes(), 0);
+  }
+
+  function closeThread(btn) {
+    btn.closest('tr.thread').remove();
+    setTimeout(() => layoutAllNotes(), 0);
+  }
+
+  function mockAgentReply(text) {
+    return `<em>(mock response — in the real product the agent would answer here, grounded in the diff, scope doc, transcripts, and local code at <code>~/workspace/filadd/scheduler-api</code>.)</em>`;
+  }
+
+  function addToDrafts(btn) {
+    const block = btn.closest('.draft-block');
+    block.classList.add('queued');
+    const head = block.querySelector('.head span:first-child');
+    head.textContent = '✓ Queued for PR';
+    btn.disabled = true;
+    incrementDrafts();
+  }
+  function editDraft(btn) {
+    alert('(prototype) — would open an inline edit on the draft comment text');
+  }
+  function dismissDraft(btn) {
+    const block = btn.closest('.draft-block');
+    block.classList.add('dismissed');
+    const head = block.querySelector('.head span:first-child');
+    head.textContent = '✗ Dismissed';
+    btn.disabled = true;
+  }
+  function askAgent(ev, topic) {
+    ev.stopPropagation();
+    const btn = ev.currentTarget || ev.target;
+    // figure out which context we were called from
+    if (btn.closest('.note')) {
+      openAgentThreadOnNote(btn, topic);
+    } else if (btn.closest('.draft-block')) {
+      openAgentThreadOnDraft(btn, topic);
+    } else {
+      // fallback: nearest review row → first line
+      const row = btn.closest('.review-row');
+      if (row) {
+        const firstLine = row.querySelector('.diff-body tr.line');
+        if (firstLine) insertAgentThread(firstLine.nextSibling || firstLine, firstLine.dataset.line || '?', topic);
+      }
+    }
+  }
+
+  function incrementDrafts() {
+    draftCount += 1;
+    const el = document.getElementById('comment-count');
+    el.textContent = draftCount;
+    const btn = document.getElementById('comment-btn');
+    if (draftCount > 0) btn.classList.add('has-drafts');
+  }
+
+  function submitComments() {
+    if (draftCount === 0) {
+      alert('(prototype) No queued comments. Add some via the draft-comment blocks or the line "+" affordance.');
+      return;
+    }
+    alert(`(prototype) Would submit ${draftCount} comment(s) to the PR.`);
+  }
+
+  function approvePR() {
+    alert(`(prototype) Would mark the PR as approved${draftCount ? ` and submit ${draftCount} queued comment(s)` : ''}.`);
+  }
+</script>
+
+</body>
+</html>

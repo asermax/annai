@@ -1,0 +1,326 @@
+{
+  "$ref": "#/definitions/Surface",
+  "definitions": {
+    "Surface": {
+      "type": "object",
+      "properties": {
+        "pr": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1
+            },
+            "number": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "branch": {
+              "type": "string",
+              "minLength": 1
+            },
+            "baseBranch": {
+              "type": "string",
+              "minLength": 1
+            },
+            "stats": {
+              "type": "object",
+              "properties": {
+                "additions": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "deletions": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "files": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "additions",
+                "deletions",
+                "files"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "url",
+            "title",
+            "number",
+            "branch",
+            "baseBranch",
+            "stats"
+          ],
+          "additionalProperties": false
+        },
+        "tldr": {
+          "type": "string"
+        },
+        "repo": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "base-context",
+                  "entry-point",
+                  "supporting"
+                ]
+              },
+              "intro": {
+                "type": "string"
+              },
+              "diagrams": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "diffs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "path": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "hunks": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "header": {
+                            "type": "string"
+                          },
+                          "lines": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "context",
+                                    "add",
+                                    "del"
+                                  ]
+                                },
+                                "oldLine": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "newLine": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "content": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "oldLine",
+                                "newLine",
+                                "content"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "header",
+                          "lines"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "annotations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "pattern",
+                              "note",
+                              "question",
+                              "surface-check",
+                              "discrepancy"
+                            ]
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "body": {
+                            "type": "string"
+                          },
+                          "lineRange": {
+                            "type": "array",
+                            "minItems": 2,
+                            "maxItems": 2,
+                            "items": [
+                              {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "title",
+                          "body",
+                          "lineRange"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "suggestions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "body": {
+                            "type": "string"
+                          },
+                          "lineRange": {
+                            "$ref": "#/definitions/Surface/properties/groups/items/properties/diffs/items/properties/annotations/items/properties/lineRange"
+                          },
+                          "suggestionCode": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "body",
+                          "lineRange"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "path",
+                    "hunks",
+                    "annotations",
+                    "suggestions"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "kind",
+              "intro",
+              "diffs"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "diagrams": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Surface/properties/groups/items/properties/diagrams/items"
+          }
+        },
+        "reviewPrompts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "pr",
+        "tldr",
+        "repo",
+        "groups"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

@@ -1,0 +1,11 @@
+# Node deps — bootstrap installs these on first run
+skills/review/scripts/app/node_modules/
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+*.log
+
+# Local-only test/run artifacts
+.cache/

@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Code Review Surface — Prototype v02</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-alt: #f6f8fa;
+    --border: #d0d7de;
+    --border-soft: #e6e9ed;
+    --ink: #1f2328;
+    --muted: #6b7280;
+    --faint: #9aa1ac;
+    --accent: #0969da;
+    --add-bg: #e6ffec;
+    --add-ink: #064e1a;
+    --add-num: #ccffd8;
+    --del-bg: #ffebe9;
+    --del-ink: #82071e;
+    --del-num: #ffd7d5;
+    --hunk-bg: #f1f5f9;
+    --hunk-ink: #57606a;
+    --note-q: #b65d00;
+    --note-i: #0969da;
+    --note-t: #57606a;
+    --comment-bg: #fff8dc;
+    --comment-edge: #e3c768;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.5;
+    font-size: 14px;
+  }
+  code, .mono {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.85em;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* layout */
+  .page { padding: 0 32px 80px; }
+  .container { max-width: 1600px; margin: 0 auto; }
+
+  /* top nav */
+  nav.top {
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 32px;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 13px;
+  }
+  nav.top .brand { font-weight: 600; }
+  nav.top .pill {
+    font-size: 11px;
+    background: var(--bg-alt);
+    color: var(--muted);
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--border-soft);
+  }
+  nav.top .spacer { flex: 1; }
+  nav.top a { color: var(--muted); padding: 4px 8px; border-radius: 4px; }
+  nav.top a:hover { background: var(--bg-alt); text-decoration: none; }
+
+  /* PR header */
+  .pr-header {
+    padding: 24px 0 12px;
+    border-bottom: 1px solid var(--border-soft);
+    margin-bottom: 24px;
+  }
+  .pr-header h1 {
+    margin: 0 0 6px;
+    font-size: 20px;
+    font-weight: 600;
+  }
+  .pr-header h1 .pr-num { color: var(--muted); font-weight: 400; }
+  .pr-header .meta {
+    color: var(--muted);
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .pr-header .meta .sep::before { content: "·"; margin: 0 4px; color: var(--faint); }
+  .pr-header .meta code {
+    color: var(--ink);
+    background: var(--bg-alt);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+  .pr-header .tldr {
+    margin-top: 14px;
+    color: var(--ink);
+    max-width: 950px;
+  }
+  .chip {
+    display: inline-block;
+    background: #ddf4ff;
+    color: var(--accent);
+    border: 1px solid #b3e0ff;
+    padding: 1px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .chip.warn { background: #fff8c5; color: #7d4e00; border-color: #f0dc88; }
+  .chip.muted { background: var(--bg-alt); color: var(--muted); border-color: var(--border-soft); }
+
+  /* table of contents */
+  .toc {
+    background: var(--bg-alt);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin-bottom: 32px;
+    font-size: 13px;
+  }
+  .toc summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--ink);
+    user-select: none;
+  }
+  .toc summary::-webkit-details-marker { color: var(--muted); }
+  .toc ol {
+    margin: 12px 0 4px;
+    padding-left: 24px;
+    color: var(--muted);
+  }
+  .toc ol li { margin-bottom: 4px; }
+  .toc ol li .files { color: var(--faint); font-size: 12px; margin-left: 6px; }
+  .toc .not-shown { color: var(--faint); font-style: italic; }
+
+  /* group section */
+  .group {
+    margin-bottom: 56px;
+  }
+  .group-head {
+    margin-bottom: 16px;
+  }
+  .group-head .label {
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .group-head h2 {
+    margin: 0 0 8px;
+    font-size: 18px;
+    font-weight: 600;
+  }
+  .group-note {
+    color: var(--ink);
+    max-width: 950px;
+    margin-bottom: 4px;
+  }
+  .group-note p { margin: 0 0 8px; }
+
+  /* review row: two-column diff + notes */
+  .review-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 24px;
+    margin-top: 18px;
+    margin-bottom: 28px;
+  }
+  @media (max-width: 1100px) {
+    .review-row { grid-template-columns: 1fr; }
+  }
+
+  /* diff block */
+  .diff {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--bg);
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12.5px;
+  }
+  .diff-head {
+    background: var(--bg-alt);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    font-family: -apple-system, system-ui, sans-serif;
+  }
+  .diff-head .path {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .diff-head .badge {
+    font-size: 11px;
+    color: var(--muted);
+    background: var(--bg);
+    border: 1px solid var(--border-soft);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+  .diff-head .actions {
+    margin-left: auto;
+    display: flex;
+    gap: 6px;
+  }
+  .diff-head button {
+    font-size: 12px;
+    font-family: inherit;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    padding: 3px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .diff-head button:hover { background: var(--bg-alt); }
+
+  /* diff body */
+  .diff-body { overflow-x: auto; }
+  .diff-body table {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-ligatures: none;
+  }
+  .diff-body td {
+    padding: 0 8px;
+    white-space: pre;
+    vertical-align: top;
+  }
+  .diff-body .gutter {
+    width: 1%;
+    min-width: 48px;
+    text-align: right;
+    color: var(--faint);
+    user-select: none;
+    background: var(--bg-alt);
+    border-right: 1px solid var(--border-soft);
+    font-size: 11.5px;
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+  .diff-body .gutter.gutter-old { border-right: none; }
+  .diff-body tr.add .gutter { background: var(--add-num); color: #2e7235; }
+  .diff-body tr.del .gutter { background: var(--del-num); color: #a13335; }
+  .diff-body tr.add td.code { background: var(--add-bg); color: var(--ink); }
+  .diff-body tr.del td.code { background: var(--del-bg); color: var(--ink); }
+  .diff-body tr.hunk td {
+    background: var(--hunk-bg);
+    color: var(--hunk-ink);
+    font-size: 11.5px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+    border-top: 1px solid var(--border-soft);
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .diff-body tr.line:hover td.code { background: linear-gradient(transparent 0, transparent 100%); }
+  .diff-body tr.line { position: relative; }
+  .diff-body .code-cell { position: relative; }
+  .diff-body .add-comment {
+    position: absolute;
+    left: -16px;
+    top: 2px;
+    width: 16px;
+    height: 16px;
+    background: var(--accent);
+    color: white;
+    text-align: center;
+    line-height: 16px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 3px;
+    opacity: 0;
+    cursor: pointer;
+    font-family: -apple-system, system-ui, sans-serif;
+  }
+  .diff-body tr:hover .add-comment { opacity: 1; }
+
+  /* expand-file affordance */
+  .file-expand-bar {
+    display: flex;
+    justify-content: center;
+    padding: 6px 0;
+    background: var(--bg-alt);
+    border-top: 1px solid var(--border-soft);
+    border-bottom: 1px solid var(--border-soft);
+    font-size: 12px;
+  }
+  .file-expand-bar button {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 3px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: -apple-system, system-ui, sans-serif;
+  }
+  .file-expand-bar button:hover { background: var(--bg); color: var(--ink); }
+
+  /* notes column */
+  .notes { }
+  .note {
+    border-left: 2px solid var(--note-i);
+    padding: 0 0 0 12px;
+    margin-bottom: 18px;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .note.q { border-left-color: var(--note-q); }
+  .note.t { border-left-color: var(--note-t); }
+  .note .ref {
+    color: var(--faint);
+    font-size: 11px;
+    font-family: ui-monospace, Menlo, monospace;
+    margin-bottom: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .note .kind {
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--note-i);
+    margin-right: 6px;
+  }
+  .note.q .kind { color: var(--note-q); }
+  .note.t .kind { color: var(--note-t); }
+  .note p { margin: 0 0 4px; color: var(--ink); }
+
+  /* comment thread (planned PR comment) */
+  .comment {
+    background: var(--comment-bg);
+    border: 1px solid var(--comment-edge);
+    border-radius: 5px;
+    padding: 10px 12px;
+    margin-bottom: 18px;
+    font-size: 13px;
+  }
+  .comment .head {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .comment .body { color: var(--ink); }
+  .comment .ref {
+    color: var(--muted);
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 11px;
+    margin-bottom: 4px;
+  }
+  .comment .actions {
+    margin-top: 8px;
+    display: flex;
+    gap: 10px;
+    font-size: 12px;
+  }
+  .comment .actions a { color: var(--muted); }
+
+  /* group divider */
+  .group + .group { border-top: 1px dashed var(--border-soft); padding-top: 32px; }
+
+  /* small */
+  .placeholder {
+    color: var(--faint);
+    font-style: italic;
+    font-size: 12px;
+  }
+
+  /* design notes */
+  .design-notes {
+    border-top: 2px solid var(--border);
+    padding-top: 32px;
+    margin-top: 48px;
+    color: var(--muted);
+    font-size: 13px;
+    max-width: 950px;
+  }
+  .design-notes h2 { color: var(--ink); font-size: 16px; margin: 0 0 12px; }
+  .design-notes h3 { color: var(--ink); font-size: 13px; margin: 18px 0 6px; }
+  .design-notes ul { padding-left: 22px; }
+  .design-notes li { margin-bottom: 6px; }
+
+  /* sentinel: keyword highlight (uses subtle bg, no inline annotation) */
+  .kw {
+    background: rgba(255, 230, 100, 0.35);
+    padding: 0 2px;
+    border-radius: 2px;
+  }
+</style>
+</head>
+<body>
+
+<nav class="top">
+  <span class="brand">Review Surface</span>
+  <span class="pill">prototype v02</span>
+  <span class="pill mono">filadd/scheduler-api#323</span>
+  <span class="spacer"></span>
+  <a href="#base">Base context</a>
+  <a href="#entry-resolve">Resolve flow</a>
+  <a href="#entry-advance">Advance run</a>
+  <a href="#entry-webhook">Calendly webhook</a>
+  <a href="#coexistence">Legacy split</a>
+  <a href="#notes">Design notes</a>
+</nav>
+
+<div class="page">
+<div class="container">
+
+<header class="pr-header">
+  <h1>Scheduling Flow Engine — Foundation <span class="pr-num">#323</span></h1>
+  <div class="meta">
+    <code>feat/scheduling-flow-engine-foundation</code>
+    → <code>develop</code>
+    <span class="sep"></span>
+    <span>+9,322 / −5,622 across 100 files</span>
+    <span class="sep"></span>
+    <span>by <code>aguizquierdo</code></span>
+    <span class="chip muted">no PR body</span>
+    <span class="chip warn">context external</span>
+  </div>
+  <div class="tldr">
+    Foundation for the pre-session orchestrator (waiting room). Introduces 4 MySQL tables (<code>scheduling_flow</code>, <code>scheduling_flow_step</code>, <code>scheduling_flow_step_transition</code>, <code>scheduling_flow_run</code>), the new <code>POST /scheduling-flow-runs/</code> endpoint family, and a minimal Calendly-webhook hook to link bookings back to runs. <code>legacy_*</code> endpoints split off so existing services keep working unchanged.
+  </div>
+</header>
+
+<details class="toc" open>
+  <summary>Files in this PR (100) — showing 5 as sample</summary>
+  <ol>
+    <li><strong>Base context — data model</strong> <span class="files">→ app/models/scheduling_flow.py, app/models/scheduling_flow_run.py, app/models/service.py</span></li>
+    <li><strong>Entry point — Resolve flow / list runs</strong> <span class="files">→ app/endpoints/scheduling_flow_run.py (GET)</span></li>
+    <li><strong>Entry point — Advance the run</strong> <span class="files">→ app/endpoints/scheduling_flow_run.py (POST advance), app/services/scheduling_flow_run.py</span></li>
+    <li><strong>Entry point — Calendly webhook</strong> <span class="files">→ app/endpoints/event.py, app/endpoints/legacy_event.py</span></li>
+    <li><strong>Coexistence layer — legacy_*</strong> <span class="files">→ app/endpoints/legacy_*.py, app/repositories/legacy_*.py, app/services/legacy_*.py</span></li>
+    <li class="not-shown">95 other files (schemas, repositories, services, jobs, tests, etc.) — collapsed in this prototype but addressable in the final product.</li>
+  </ol>
+</details>
+
+<!-- ──────────────────────────── Group 1: Base context ──────────────────────────── -->
+<section class="group" id="base">
+  <header class="group-head">
+    <div class="label">Base context</div>
+    <h2>The flow engine data model</h2>
+    <div class="group-note">
+      <p>Four new tables and one extended one. The whole rest of this PR reads naturally only after these shapes are in your head — every endpoint and service operates on these entities. <strong>Read this group first</strong> even though it isn't a flow entry point.</p>
+      <p>From the scope doc: <em>"transiciones lineales sólo — puntero <code>next_step_id</code>, sin condiciones, sin DSL"</em>. Watch for any condition column / JSON field that would contradict this.</p>
+    </div>
+  </header>
+
+  <!-- Diff 1.1: scheduling_flow.py -->
+  <div class="review-row">
+    <div class="diff">
+      <div class="diff-head">
+        <span class="path mono">app/models/scheduling_flow.py</span>
+        <span class="badge">new · +88</span>
+        <div class="actions">
+          <button>View full file</button>
+          <button>Copy path</button>
+        </div>
+      </div>
+      <div class="diff-body">
+        <table>
+          <tr class="hunk"><td colspan="3">@@ new file @@</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">1</td><td class="code code-cell"><span class="add-comment">+</span>+from datetime import datetime</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">2</td><td class="code code-cell"><span class="add-comment">+</span>+from typing import Any</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">3</td><td class="code code-cell"><span class="add-comment">+</span>+</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">4</td><td class="code code-cell"><span class="add-comment">+</span>+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, JSON, String</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">5</td><td class="code code-cell"><span class="add-comment">+</span>+from sqlalchemy.orm import Mapped, mapped_column</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">6</td><td class="code code-cell"><span class="add-comment">+</span>+from sqlalchemy.sql import func</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">7</td><td class="code code-cell"><span class="add-comment">+</span>+</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">8</td><td class="code code-cell"><span class="add-comment">+</span>+from app.schemas.scheduling_flow_step import StepType</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">9</td><td class="code code-cell"><span class="add-comment">+</span>+</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">10</td><td class="code code-cell"><span class="add-comment">+</span>+from .base import Base, UnsignedInt, generate_ulid</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">11</td><td class="code code-cell"><span class="add-comment">+</span>+</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">12</td><td class="code code-cell"><span class="add-comment">+</span>+</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">13</td><td class="code code-cell"><span class="add-comment">+</span>+class SchedulingFlow(Base):</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">14</td><td class="code code-cell"><span class="add-comment">+</span>+    __tablename__ = "scheduling_flow"</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">15</td><td class="code code-cell"><span class="add-comment">+</span>+    __mapper_args__ = {"eager_defaults": True}</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">16</td><td class="code code-cell"><span class="add-comment">+</span>+</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">17</td><td class="code code-cell"><span class="add-comment">+</span>+    id: Mapped[str] = mapped_column(String(26), primary_key=True, default=generate_ulid)</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">18</td><td class="code code-cell"><span class="add-comment">+</span>+    service_id: Mapped[int] = mapped_column(</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">19</td><td class="code code-cell"><span class="add-comment">+</span>+        UnsignedInt, ForeignKey("service.id"), nullable=False, index=True,</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">20</td><td class="code code-cell"><span class="add-comment">+</span>+    )</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">21</td><td class="code code-cell"><span class="add-comment">+</span>+    entry_step_id: Mapped[str | None] = mapped_column(</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">22</td><td class="code code-cell"><span class="add-comment">+</span>+        String(26),</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">23</td><td class="code code-cell"><span class="add-comment">+</span>+        ForeignKey("scheduling_flow_step.id", use_alter=True,</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">24</td><td class="code code-cell"><span class="add-comment">+</span>+                   name="fk_scheduling_flow_entry_step_id_scheduling_flow_step"),</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">25</td><td class="code code-cell"><span class="add-comment">+</span>+        nullable=True,</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">26</td><td class="code code-cell"><span class="add-comment">+</span>+    )</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">27</td><td class="code code-cell"><span class="add-comment">+</span>+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)</td></tr>
+          <tr class="line ctx"><td class="gutter gutter-old">...</td><td class="gutter">...</td><td class="code code-cell">  (timestamps)</td></tr>
+          <tr class="hunk"><td colspan="3">@@ class SchedulingFlowStep @@</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">40</td><td class="code code-cell"><span class="add-comment">+</span>+class SchedulingFlowStep(Base):</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">41</td><td class="code code-cell"><span class="add-comment">+</span>+    __tablename__ = "scheduling_flow_step"</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">42</td><td class="code code-cell"><span class="add-comment">+</span>+    id: Mapped[str] = mapped_column(String(26), primary_key=True, default=generate_ulid)</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">43</td><td class="code code-cell"><span class="add-comment">+</span>+    flow_id: Mapped[str] = mapped_column(String(26), ForeignKey("scheduling_flow.id"), nullable=False, index=True)</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">44</td><td class="code code-cell"><span class="add-comment">+</span>+    step_type: Mapped[StepType] = mapped_column(Enum(StepType), nullable=False)</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">45</td><td class="code code-cell"><span class="add-comment">+</span>+    config: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default={})</td></tr>
+          <tr class="hunk"><td colspan="3">@@ class SchedulingFlowStepTransition @@</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">60</td><td class="code code-cell"><span class="add-comment">+</span>+class SchedulingFlowStepTransition(Base):</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">61</td><td class="code code-cell"><span class="add-comment">+</span>+    __tablename__ = "scheduling_flow_step_transition"</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">62</td><td class="code code-cell"><span class="add-comment">+</span>+    id: Mapped[str] = mapped_column(String(26), primary_key=True, default=generate_ulid)</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">63</td><td class="code code-cell"><span class="add-comment">+</span>+    from_step_id: Mapped[str] = mapped_column(</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">64</td><td class="code code-cell"><span class="add-comment">+</span>+        String(26), ForeignKey("scheduling_flow_step.id"),</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">65</td><td class="code code-cell"><span class="add-comment">+</span>+        nullable=False, <span class="kw">unique=True</span>,</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">66</td><td class="code code-cell"><span class="add-comment">+</span>+    )</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">67</td><td class="code code-cell"><span class="add-comment">+</span>+    to_step_id: Mapped[str] = mapped_column(</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">68</td><td class="code code-cell"><span class="add-comment">+</span>+        String(26), ForeignKey("scheduling_flow_step.id"),</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">69</td><td class="code code-cell"><span class="add-comment">+</span>+        nullable=False, index=True,</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">70</td><td class="code code-cell"><span class="add-comment">+</span>+    )</td></tr>
+        </table>
+      </div>
+      <div class="file-expand-bar">
+        <button>Expand 18 more lines (timestamps, full transition table)</button>
+      </div>
+    </div>
+
+    <aside class="notes">
+      <div class="note t">
+        <div class="ref">L17 · whole file</div>
+        <span class="kind">Pattern</span>
+        <p>ULID primary keys (<code>String(26)</code>, <code>generate_ulid</code>) — consistent across all three new tables. Existing tables (<code>service</code>, etc.) use auto-increment ints, so this is a deliberate new convention. Worth knowing for future tables in this area.</p>
+      </div>
+      <div class="note i">
+        <div class="ref">L21–26 · entry_step_id</div>
+        <span class="kind">Note</span>
+        <p>Self-referential FK with <code>use_alter=True</code> — needed because <code>scheduling_flow</code> and <code>scheduling_flow_step</code> reference each other circularly. The named constraint <code>fk_scheduling_flow_entry_step_id_scheduling_flow_step</code> lets Alembic drop it explicitly during migrations.</p>
+      </div>
+      <div class="note q">
+        <div class="ref">L65 · from_step_id</div>
+        <span class="kind">Question</span>
+        <p><code>unique=True</code> on <code>from_step_id</code> means <strong>one transition per source step</strong> — a hard linearity guarantee at the schema level. This matches the scope doc decision ("transiciones lineales sólo"). Confirm this isn't loosened anywhere else.</p>
+      </div>
+      <div class="comment">
+        <div class="head">💬 Draft PR comment</div>
+        <div class="ref">L65 · from_step_id</div>
+        <div class="body">When we get to scope 2 (conditional transitions) we'll need to drop this unique constraint. Worth dropping a TODO with a link to scope 2 so future-us doesn't have to rediscover this.</div>
+        <div class="actions">
+          <a href="#">Edit</a>
+          <a href="#">Resolve</a>
+          <a href="#">Send to PR</a>
+        </div>
+      </div>
+      <div class="note q">
+        <div class="ref">L43–45 · config JSON</div>
+        <span class="kind">Question</span>
+        <p>Each step's typed config lives in a single <code>JSON</code> column. How is the per-<code>step_type</code> schema enforced? In Python on write, or via DB constraint? Trace to the service layer.</p>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Diff 1.2: service.py — scheduling_mode -->
+  <div class="review-row">
+    <div class="diff">
+      <div class="diff-head">
+        <span class="path mono">app/models/service.py</span>
+        <span class="badge">+9 / −2</span>
+        <div class="actions">
+          <button>View full file</button>
+          <button>Copy path</button>
+        </div>
+      </div>
+      <div class="diff-body">
+        <table>
+          <tr class="hunk"><td colspan="3">@@ -1,9 +1,16 @@</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">1</td><td class="code code-cell"><span class="add-comment">+</span>+from __future__ import annotations</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">2</td><td class="code code-cell"><span class="add-comment">+</span>+</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">3</td><td class="code code-cell"><span class="add-comment">+</span>+from typing import TYPE_CHECKING</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">4</td><td class="code code-cell"><span class="add-comment">+</span>+</td></tr>
+          <tr class="line ctx"><td class="gutter gutter-old">1</td><td class="gutter">5</td><td class="code code-cell"> from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, String, Text</td></tr>
+          <tr class="line del"><td class="gutter gutter-old">2</td><td class="gutter"></td><td class="code code-cell"><span class="add-comment">+</span>-from sqlalchemy.orm import relationship</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">6</td><td class="code code-cell"><span class="add-comment">+</span>+from sqlalchemy.orm import Mapped, relationship</td></tr>
+          <tr class="line ctx"><td class="gutter gutter-old">3</td><td class="gutter">7</td><td class="code code-cell"> from sqlalchemy.sql import func</td></tr>
+          <tr class="hunk"><td colspan="3">@@ -25,6 +32,12 @@ class Service(Base):</td></tr>
+          <tr class="line ctx"><td class="gutter gutter-old">25</td><td class="gutter">32</td><td class="code code-cell">     updated_at = Column(DateTime, server_default=func.now(), ...)</td></tr>
+          <tr class="line ctx"><td class="gutter gutter-old">26</td><td class="gutter">33</td><td class="code code-cell">     deleted_at = Column(DateTime, default=None)</td></tr>
+          <tr class="line ctx"><td class="gutter gutter-old">27</td><td class="gutter">34</td><td class="code code-cell"> </td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">35</td><td class="code code-cell"><span class="add-comment">+</span>+    events: Mapped[list["Event"]] = relationship(</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">36</td><td class="code code-cell"><span class="add-comment">+</span>+        "Event", lazy="noload", overlaps="service",</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">37</td><td class="code code-cell"><span class="add-comment">+</span>+    )</td></tr>
+          <tr class="line ctx"><td class="gutter gutter-old">28</td><td class="gutter">38</td><td class="code code-cell"> </td></tr>
+        </table>
+      </div>
+    </div>
+
+    <aside class="notes">
+      <div class="note q">
+        <div class="ref">whole file</div>
+        <span class="kind">Discrepancy</span>
+        <p>The scope doc states this PR adds <code>scheduling_mode</code> as an Enum column on <code>service</code>, defaulting to <code>sequential</code>, as the bifurcation point between legacy and new paths. <strong>The column is not in this diff.</strong> Either it was deferred, lives in a separate migration not shown here, or the bifurcation works differently than the scope says.</p>
+      </div>
+      <div class="comment">
+        <div class="head">💬 Draft PR comment</div>
+        <div class="ref">app/models/service.py</div>
+        <div class="body">Scope doc says <code>scheduling_mode</code> (Enum: sequential / multievent) should land on <code>service</code> here. I don't see it — was it deferred to a separate PR, or is the legacy-vs-new split decided some other way?</div>
+        <div class="actions">
+          <a href="#">Edit</a>
+          <a href="#">Resolve</a>
+          <a href="#">Send to PR</a>
+        </div>
+      </div>
+      <div class="note i">
+        <div class="ref">L35–37 · events relationship</div>
+        <span class="kind">Note</span>
+        <p>New ORM relationship from Service to Event, <code>lazy="noload"</code>. <code>overlaps="service"</code> suppresses SQLAlchemy's relationship-conflict warning — there's another path between these models. Not load-bearing for this PR but worth checking it doesn't break existing query patterns.</p>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ──────────────────────────── Group 2: Resolve flow ──────────────────────────── -->
+<section class="group" id="entry-resolve">
+  <header class="group-head">
+    <div class="label">Entry point · HTTP</div>
+    <h2>Resolve flow &amp; list runs — <code>GET /scheduling-flow-runs/</code></h2>
+    <div class="group-note">
+      <p>When the student opens the waiting room, the BFF (scheduler-consumer-api) calls this endpoint to fetch the student's current run for the service. From the design doc: <em>"the BFF returns the active flow definition (steps + transitions) for the student's feature-flag variant, plus the student's current run (creating one if none exists, or replacing a terminal run with a fresh one)"</em>.</p>
+      <p>The foundation slice doesn't do feature-flag variant resolution (scope 13), so the GET likely just filters by user+service.</p>
+    </div>
+  </header>
+
+  <div class="review-row">
+    <div class="diff">
+      <div class="diff-head">
+        <span class="path mono">app/endpoints/scheduling_flow_run.py</span>
+        <span class="badge">new · +116</span>
+        <div class="actions">
+          <button>View full file</button>
+          <button>Copy path</button>
+        </div>
+      </div>
+      <div class="diff-body">
+        <table>
+          <tr class="hunk"><td colspan="3">@@ new file @@</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">1</td><td class="code code-cell"><span class="add-comment">+</span>+from typing import Annotated, TypeAlias</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">2</td><td class="code code-cell"><span class="add-comment">+</span>+from fastapi import APIRouter, Depends, Query, status</td></tr>
+          <tr class="line ctx"><td class="gutter gutter-old">...</td><td class="gutter">...</td><td class="code code-cell">(imports)</td></tr>
+          <tr class="hunk"><td colspan="3">@@ get_filters @@</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">19</td><td class="code code-cell"><span class="add-comment">+</span>+async def get_filters(</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">20</td><td class="code code-cell"><span class="add-comment">+</span>+    user_id: Annotated[int | None, Query()] = None,</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">21</td><td class="code code-cell"><span class="add-comment">+</span>+    service_id: Annotated[int | None, Query()] = None,</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">22</td><td class="code code-cell"><span class="add-comment">+</span>+    session_status: Annotated[SessionStatus | None, Query()] = None,</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">23</td><td class="code code-cell"><span class="add-comment">+</span>+) -> SchedulingFlowRunFilters:</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">24</td><td class="code code-cell"><span class="add-comment">+</span>+    filters = SchedulingFlowRunFilters()</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">25</td><td class="code code-cell"><span class="add-comment">+</span>+    if user_id is not None:</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">26</td><td class="code code-cell"><span class="add-comment">+</span>+        filters["user_id"] = user_id</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">27</td><td class="code code-cell"><span class="add-comment">+</span>+    if service_id is not None:</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">28</td><td class="code code-cell"><span class="add-comment">+</span>+        filters["flow"] = SchedulingFlowFilters(service_id=service_id, <span class="kw">enabled=True</span>)</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">29</td><td class="code code-cell"><span class="add-comment">+</span>+    if session_status is not None:</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">30</td><td class="code code-cell"><span class="add-comment">+</span>+        filters["session"] = SessionFilters(status=session_status)</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">31</td><td class="code code-cell"><span class="add-comment">+</span>+    return filters</td></tr>
+          <tr class="hunk"><td colspan="3">@@ GET / @@</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">53</td><td class="code code-cell"><span class="add-comment">+</span>+@router.get("/", ...)</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">54</td><td class="code code-cell"><span class="add-comment">+</span>+async def get_scheduling_flow_runs(</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">55</td><td class="code code-cell"><span class="add-comment">+</span>+    filters: SchedulingFlowRunQueryFilters,</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">56</td><td class="code code-cell"><span class="add-comment">+</span>+    expands: SchedulingFlowRunQueryExpands,</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">57</td><td class="code code-cell"><span class="add-comment">+</span>+    service: Annotated[SchedulingFlowRunService, Depends(get_scheduling_flow_run_service)],</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">58</td><td class="code code-cell"><span class="add-comment">+</span>+) -> list[SchedulingFlowRunSchema]:</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">59</td><td class="code code-cell"><span class="add-comment">+</span>+    return await service.get_scheduling_flow_runs(filters=filters, expands=expands)</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">60</td><td class="code code-cell"><span class="add-comment">+</span>+</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">61</td><td class="code code-cell"><span class="add-comment">+</span>+@router.post("/", ..., status_code=201)</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">62</td><td class="code code-cell"><span class="add-comment">+</span>+async def create_scheduling_flow_run(payload, service): ...</td></tr>
+        </table>
+      </div>
+      <div class="file-expand-bar">
+        <button>Expand 56 more lines (POST advance, POST return, dependencies)</button>
+      </div>
+    </div>
+
+    <aside class="notes">
+      <div class="note i">
+        <div class="ref">L28 · enabled=True filter</div>
+        <span class="kind">Note</span>
+        <p>The filter forces <code>enabled=True</code> on the flow when resolving by service. This means a disabled flow effectively hides all runs — useful for migrations / kill-switching a variant.</p>
+      </div>
+      <div class="note q">
+        <div class="ref">L19–31 · filter builder</div>
+        <span class="kind">Question</span>
+        <p>The endpoint is a generic <em>list runs by filter</em>, not the "resolve flow for student" affordance from the design doc. Where does the "create run if none exists" behavior live? Likely in <code>POST /</code> on line 61, but worth verifying — that's the make-or-break for the waiting-room entry experience.</p>
+      </div>
+      <div class="note t">
+        <div class="ref">whole endpoint module</div>
+        <span class="kind">Surface check</span>
+        <p>Four routes total: <code>GET /</code> (list), <code>POST /</code> (create), <code>POST /{run_id}/advance/</code> (advance), <code>POST /{run_id}/return/</code> (back). No DELETE, no status-poll. <strong>Polling lives where?</strong> Design doc says it's a separate endpoint.</p>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ──────────────────────────── Group 3: Advance the run ──────────────────────────── -->
+<section class="group" id="entry-advance">
+  <header class="group-head">
+    <div class="label">Entry point · HTTP</div>
+    <h2>Advance the run — <code>POST /scheduling-flow-runs/{run_id}/advance/</code></h2>
+    <div class="group-note">
+      <p>The student picks an option (or just confirms an intro screen) and the BFF calls this. The engine reads the run's current step, evaluates the (linear, in this slice) transition, and moves the run forward.</p>
+      <p>The transition model from <a href="#base">Base context</a> is what makes this endpoint trivial in this slice — <code>unique=True</code> on <code>from_step_id</code> means there's exactly one outgoing edge per step. <em>Same diff shown again below, narrower, as reminder.</em></p>
+    </div>
+  </header>
+
+  <div class="review-row">
+    <div class="diff">
+      <div class="diff-head">
+        <span class="path mono">app/endpoints/scheduling_flow_run.py</span>
+        <span class="badge">excerpt · advance endpoint</span>
+        <div class="actions">
+          <button>View full file</button>
+        </div>
+      </div>
+      <div class="diff-body">
+        <table>
+          <tr class="hunk"><td colspan="3">@@ POST /{run_id}/advance/ @@</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">79</td><td class="code code-cell"><span class="add-comment">+</span>+@router.post("/{run_id}/advance/", ...)</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">80</td><td class="code code-cell"><span class="add-comment">+</span>+async def advance_scheduling_flow_run(</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">81</td><td class="code code-cell"><span class="add-comment">+</span>+    run_id: str,</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">82</td><td class="code code-cell"><span class="add-comment">+</span>+    service: Annotated[SchedulingFlowRunService, Depends(get_scheduling_flow_run_service)],</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">83</td><td class="code code-cell"><span class="add-comment">+</span>+) -> SchedulingFlowRunSchema:</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">84</td><td class="code code-cell"><span class="add-comment">+</span>+    return await service.advance_scheduling_flow_run(</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">85</td><td class="code code-cell"><span class="add-comment">+</span>+        run_id=run_id,</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">86</td><td class="code code-cell"><span class="add-comment">+</span>+        payload=<span class="kw">AdvanceSchedulingFlowRunPayload()</span>,</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">87</td><td class="code code-cell"><span class="add-comment">+</span>+    )</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <aside class="notes">
+      <div class="note q">
+        <div class="ref">L86 · empty payload</div>
+        <span class="kind">Question</span>
+        <p>The endpoint <strong>doesn't accept a request body</strong> — it instantiates an empty <code>AdvanceSchedulingFlowRunPayload()</code>. For this foundation (intro → calendar → confirmation, no answer capture yet) that's fine. But once <code>select</code> / <code>chat</code> steps land (scopes 3/5), the answer payload has to come from somewhere. Where? Future PR or already plumbed?</p>
+      </div>
+      <div class="note t">
+        <div class="ref">L80 · function signature</div>
+        <span class="kind">Surface check</span>
+        <p>No "calendar step" guard here. Design doc says calendar steps return <code>409 Conflict</code> on manual advance — that must be enforced inside <code>service.advance_scheduling_flow_run</code>. Trace there to confirm.</p>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Same diff shown again (transition model) for context -->
+  <div class="review-row">
+    <div class="diff">
+      <div class="diff-head">
+        <span class="path mono">app/models/scheduling_flow.py</span>
+        <span class="badge">reminder · transition only</span>
+        <div class="actions">
+          <button>View full file</button>
+        </div>
+      </div>
+      <div class="diff-body">
+        <table>
+          <tr class="hunk"><td colspan="3">@@ class SchedulingFlowStepTransition (re-shown) @@</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">60</td><td class="code code-cell">+class SchedulingFlowStepTransition(Base):</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">63</td><td class="code code-cell">+    from_step_id: Mapped[str] = mapped_column(</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">65</td><td class="code code-cell">+        ..., <span class="kw">unique=True</span>,</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">67</td><td class="code code-cell">+    to_step_id: Mapped[str] = mapped_column(...)</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <aside class="notes">
+      <div class="note t">
+        <span class="kind">Why shown again</span>
+        <p>The <code>unique=True</code> on <code>from_step_id</code> is what makes the advance endpoint take no payload: there's exactly one outgoing transition per step, so the engine doesn't need a choice from the user yet. This shape is load-bearing for the simplicity of the advance call.</p>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ──────────────────────────── Group 4: Calendly webhook ──────────────────────────── -->
+<section class="group" id="entry-webhook">
+  <header class="group-head">
+    <div class="label">Entry point · External (webhook)</div>
+    <h2>Calendly webhook — link booking to run</h2>
+    <div class="group-note">
+      <p>When the student finishes booking in the Calendly embed, Calendly fires <code>invitee.created</code>. The webhook handler creates the session as it always has, then — if the booking came from a flow — looks up the run via a prefill/UTM-embedded run id, links the session to the run, and advances it to the confirmation step.</p>
+      <p>From the scope doc: <em>"el webhook de Calendly se extiende mínimamente"</em>. The full webhook decomposition is scope 19 (stretch).</p>
+    </div>
+  </header>
+
+  <div class="review-row">
+    <div class="diff">
+      <div class="diff-head">
+        <span class="path mono">app/endpoints/event.py</span>
+        <span class="badge">−147 · webhook stripped down</span>
+        <div class="actions">
+          <button>View full file</button>
+        </div>
+      </div>
+      <div class="diff-body">
+        <table>
+          <tr class="hunk"><td colspan="3">@@ -1,240 +1,93 @@</td></tr>
+          <tr class="line del"><td class="gutter gutter-old">12</td><td class="gutter"></td><td class="code code-cell"><span class="add-comment">+</span>-async def handle_invitee_created(payload, session_repo, ...):</td></tr>
+          <tr class="line del"><td class="gutter gutter-old">13</td><td class="gutter"></td><td class="code code-cell"><span class="add-comment">+</span>-    # 200+ lines of legacy session-creation, status checks, mongo writes, etc.</td></tr>
+          <tr class="line del"><td class="gutter gutter-old">14</td><td class="gutter"></td><td class="code code-cell"><span class="add-comment">+</span>-    ...</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">12</td><td class="code code-cell"><span class="add-comment">+</span>+async def handle_invitee_created(payload, session_repo, run_service, ...):</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">13</td><td class="code code-cell"><span class="add-comment">+</span>+    session = await session_repo.create_from_calendly(payload)</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">14</td><td class="code code-cell"><span class="add-comment">+</span>+</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">15</td><td class="code code-cell"><span class="add-comment">+</span>+    if run_id := <span class="kw">_extract_run_id_from_utm</span>(payload):</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">16</td><td class="code code-cell"><span class="add-comment">+</span>+        await run_service.link_session_to_run(run_id, session.id)</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">17</td><td class="code code-cell"><span class="add-comment">+</span>+        await run_service.advance_to_confirmation(run_id)</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">18</td><td class="code code-cell"><span class="add-comment">+</span>+</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">19</td><td class="code code-cell"><span class="add-comment">+</span>+    return session</td></tr>
+        </table>
+        <div class="placeholder" style="padding: 8px 12px; border-top: 1px solid var(--border-soft); background: var(--bg-alt);">
+          (illustrative — real diff shape; legacy webhook logic moves to legacy_event.py, see next section)
+        </div>
+      </div>
+    </div>
+
+    <aside class="notes">
+      <div class="note t">
+        <div class="ref">L15 · UTM extraction</div>
+        <span class="kind">Note</span>
+        <p>Per scope: <em>"el run id viaja por prefill + UTM de Calendly"</em>. This is the round-trip — verify <code>_extract_run_id_from_utm</code> handles both prefill query string and UTM param shapes Calendly emits.</p>
+      </div>
+      <div class="note q">
+        <div class="ref">L13–17 · happy path</div>
+        <span class="kind">Question</span>
+        <p>What if <code>link_session_to_run</code> finds no run for the id (stale, replayed, fake)? Silent skip? Error? Sentry? This is an external integration — failure modes matter.</p>
+      </div>
+      <div class="comment">
+        <div class="head">💬 Draft PR comment</div>
+        <div class="ref">L15</div>
+        <div class="body">Quick check: if the run id is malformed (truncated, wrong charset), does <code>_extract_run_id_from_utm</code> return <code>None</code> cleanly or raise? An unhandled raise here means a failed Calendly webhook delivery, which is bad.</div>
+        <div class="actions">
+          <a href="#">Edit</a>
+          <a href="#">Resolve</a>
+          <a href="#">Send to PR</a>
+        </div>
+      </div>
+      <div class="note i">
+        <div class="ref">whole handler</div>
+        <span class="kind">Note</span>
+        <p>The handler shape is intentionally small. The full webhook decomposition (separate handlers per Calendly event type, retry policy, etc.) is scope 19 (stretch). Don't suggest a refactor here — it's out of scope on purpose.</p>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ──────────────────────────── Group 5: Coexistence ──────────────────────────── -->
+<section class="group" id="coexistence">
+  <header class="group-head">
+    <div class="label">Coexistence layer</div>
+    <h2>The <code>legacy_*</code> split</h2>
+    <div class="group-note">
+      <p>Existing services (everyone, today) still need the old recurrence-pointer scheduling path. Rather than keep both paths in the same files behind branches, the old code is lifted into parallel <code>legacy_event.py</code>, <code>legacy_service.py</code>, <code>legacy_session.py</code> modules. This lets the new code evolve without breaking the old. <strong>Not tech debt</strong> — it's a deliberate coexistence strategy.</p>
+      <p>The split must be clean: non-legacy modules should not import from <code>legacy_*</code>, and vice versa. Cross-imports are the failure mode.</p>
+    </div>
+  </header>
+
+  <div class="review-row">
+    <div class="diff">
+      <div class="diff-head">
+        <span class="path mono">app/endpoints/legacy_event.py</span>
+        <span class="badge">new · +246</span>
+        <div class="actions">
+          <button>View full file</button>
+        </div>
+      </div>
+      <div class="diff-body">
+        <table>
+          <tr class="hunk"><td colspan="3">@@ moved from app/endpoints/event.py @@</td></tr>
+          <tr class="line ctx"><td class="gutter gutter-old">...</td><td class="gutter">...</td><td class="code code-cell">  (~246 lines lifted verbatim from the old event.py)</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">1</td><td class="code code-cell">+# Legacy event endpoints — preserved for services that have not</td></tr>
+          <tr class="line add"><td class="gutter gutter-old"></td><td class="gutter">2</td><td class="code code-cell">+# adopted the scheduling flow engine. Do not import from non-legacy modules.</td></tr>
+        </table>
+        <div class="placeholder" style="padding: 8px 12px; border-top: 1px solid var(--border-soft); background: var(--bg-alt);">
+          (representative — actual file is a near-verbatim lift of the previous event.py content)
+        </div>
+      </div>
+    </div>
+
+    <aside class="notes">
+      <div class="note t">
+        <span class="kind">Pattern</span>
+        <p>Three matching pairs land in this PR: <code>event ↔ legacy_event</code>, <code>service ↔ legacy_service</code>, <code>session ↔ legacy_session</code>. Each across endpoints/repositories/services layers. Total: 9 new <code>legacy_*</code> files mirroring 9 trimmed-down existing ones.</p>
+      </div>
+      <div class="note q">
+        <div class="ref">whole coexistence layer</div>
+        <span class="kind">Question</span>
+        <p>What routes them? In FastAPI terms, the same URL must dispatch to one or the other handler depending on whether the service uses the new engine. Without the missing <code>scheduling_mode</code> column (see Base context), how is this dispatch decided?</p>
+      </div>
+      <div class="note q">
+        <div class="ref">import discipline</div>
+        <span class="kind">Question</span>
+        <p>Grep across the new code for <code>from app.endpoints.legacy_</code> and <code>from app.services.legacy_</code> in non-legacy files. Any hit is a leak in the split.</p>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ──────────────────────────── Design notes ──────────────────────────── -->
+<section id="notes" class="design-notes">
+<h2>Notes from v02</h2>
+
+<h3>What changed from v01</h3>
+<ul>
+  <li>Dropped the context rail entirely — confirmed unnecessary since the reviewer knows where context lives.</li>
+  <li>Full-width layout (max 1600px) — significantly more room for diff + notes side by side.</li>
+  <li>GitHub-style diffs with proper line numbers, no inline italic commentary inside the diff body. Diff content is faithful to the original.</li>
+  <li>Two-column review row: diff on the left (wider), notes on the right (narrower). Inspired by Stripe docs.</li>
+  <li>Two annotation tiers: <strong>group note</strong> (full-width prose above each group of diffs) for "what is this section about", and <strong>per-diff note</strong> (right column) for diff-specific content.</li>
+  <li>Note styling is now subtler — colored left border, no card background.</li>
+  <li><strong>Comments as a first-class artifact</strong> — yellow-bg "Draft PR comment" blocks that would be sent to the PR (this is where the <code>diff2html</code>-style library would integrate).</li>
+  <li>Per-line hover-reveal "+" affordance on diff lines for adding new comments (CSS-only here).</li>
+  <li>"Expand full file" button on each diff header for reading surrounding context — locally reconstructed from <code>~/workspace/...</code>.</li>
+  <li>Reading order driven by the user's definition of entry points: HTTP endpoints, webhook handlers, background watchers, CLI commands. Base-context section comes first when the data model is load-bearing for understanding the flow.</li>
+  <li><strong>Same diff shown twice</strong> — the transition model is shown once in Base context, then again (narrower) in the Advance group as a reminder of why the advance call needs no payload. This worked well; happy to keep doing it where it pays off.</li>
+</ul>
+
+<h3>Observations from grounding in real diffs</h3>
+<ul>
+  <li>The promised <code>scheduling_mode</code> column on <code>service</code> is <strong>not in the diff</strong>. The scope doc says it is. Either it was deferred, or the legacy-vs-new dispatch works differently than the doc claims. <em>This is exactly the kind of doc-vs-code discrepancy a review surface should make obvious</em> — and it surfaced naturally just by reading the diff against the scope.</li>
+  <li>The advance endpoint takes no request body, leveraging the linear-transitions invariant. Worth noting because once richer step types land, the body needs a place to live.</li>
+  <li><code>unique=True</code> on <code>from_step_id</code> is the load-bearing schema-level enforcement of "linear only" — a great anchor for review prompts.</li>
+</ul>
+
+<h3>Open shape questions for v03</h3>
+<ul>
+  <li>Should notes anchor to <em>specific line ranges</em> visually (a hairline connector from note to line)? Right now the note's <code>L65</code> ref is just text.</li>
+  <li>How to handle a diff that spans 500+ lines? Even with full-file expansion, the right-column notes need to scroll-track somehow. Sticky? Per-hunk grouping?</li>
+  <li>Tachikoma should land in v03 as a second example to keep stress-testing the shape against the entry-points-first reading model — its entries are background watchers and MCP tools, not HTTP endpoints.</li>
+  <li>The "Draft PR comment" UX needs more thought — bulk-send-to-PR action, threading, replies, resolved state.</li>
+  <li>Where should <em>review-level</em> notes live (the "what should I look for in this whole PR" prompts from v01)? Top of page? End of page? They felt valuable but don't fit the per-group structure.</li>
+</ul>
+
+</section>
+
+</div>
+</div>
+</body>
+</html>

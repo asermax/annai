@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Code Review Surface — Prototype 01</title>
+<style>
+  :root {
+    --bg: #fafaf8;
+    --surface: #ffffff;
+    --border: #e4e2dd;
+    --ink: #1f2328;
+    --muted: #6b6b6b;
+    --faint: #94918a;
+    --accent: #1958a8;
+    --accent-soft: #e8f1ff;
+    --accent-edge: #b4d3f5;
+    --warn: #a96000;
+    --warn-soft: #fff4e0;
+    --warn-edge: #f5d3a6;
+    --bridge: #fffbe6;
+    --bridge-edge: #e0b400;
+    --bridge-ink: #735c00;
+    --add: #e6ffec;
+    --del: #ffebe9;
+    --code-bg: #f5f4f0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 2rem 4rem;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.55;
+  }
+  h1, h2, h3, h4 { line-height: 1.25; margin-bottom: 0.4em; }
+  h1 { font-size: 1.7rem; margin-top: 1.4em; }
+  h2 { font-size: 1.3rem; margin-top: 2.4em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
+  h3 { font-size: 1.05rem; margin-top: 1.6em; color: #2c3e50; display: inline; }
+  h4 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint); margin-top: 1.8em; margin-bottom: 0.6em; }
+  code { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.85em; background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 3px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* sticky top nav */
+  nav.top {
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    padding: 0.8em 0 0.6em;
+    margin-bottom: 1em;
+    border-bottom: 1px solid var(--border);
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 1em;
+    font-size: 0.9rem;
+  }
+  nav.top strong { color: var(--ink); }
+  nav.top a {
+    color: var(--muted);
+    padding: 0.25em 0.6em;
+    border-radius: 4px;
+  }
+  nav.top a:hover { background: var(--code-bg); text-decoration: none; }
+
+  /* intro */
+  .intro {
+    color: var(--muted);
+    font-size: 0.95rem;
+    margin-bottom: 2em;
+  }
+
+  /* PR header strip */
+  .pr-header {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.2em 1.5em;
+    margin-bottom: 1.5em;
+  }
+  .pr-header .title { font-size: 1.2rem; font-weight: 600; margin-bottom: 0.3em; }
+  .pr-header .meta { color: var(--faint); font-size: 0.85rem; }
+  .pr-header .meta code { background: transparent; padding: 0; color: var(--muted); }
+  .pr-header .tldr {
+    color: var(--muted);
+    margin-top: 0.7em;
+    padding-top: 0.7em;
+    border-top: 1px dashed var(--border);
+    font-size: 0.92rem;
+  }
+  .chip {
+    display: inline-block;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 1px solid var(--accent-edge);
+    padding: 0.1em 0.55em;
+    border-radius: 12px;
+    font-size: 0.72rem;
+    font-weight: 500;
+    margin-left: 0.4em;
+    vertical-align: 1px;
+  }
+  .chip.warn { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-edge); }
+  .chip.muted { background: var(--code-bg); color: var(--muted); border-color: var(--border); }
+
+  /* context rail */
+  .context-rail {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 0.7em;
+    margin-bottom: 2em;
+  }
+  .ctx-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.7em 1em;
+    transition: box-shadow 0.15s ease;
+  }
+  .ctx-card[open] { box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+  .ctx-card summary {
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+    list-style: none;
+    display: flex;
+    align-items: baseline;
+    gap: 0.5em;
+  }
+  .ctx-card summary::-webkit-details-marker { display: none; }
+  .ctx-card summary::after { content: "+"; margin-left: auto; color: var(--faint); font-weight: 400; }
+  .ctx-card[open] summary::after { content: "−"; }
+  .ctx-card .type {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--faint);
+    font-weight: 600;
+  }
+  .ctx-card .preview {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-top: 0.4em;
+    line-height: 1.4;
+  }
+  .ctx-card .body {
+    font-size: 0.85rem;
+    color: var(--ink);
+    margin-top: 0.7em;
+    padding-top: 0.7em;
+    border-top: 1px dashed var(--border);
+  }
+  .ctx-card .body ul { padding-left: 1.2em; margin: 0.4em 0; }
+  .ctx-card .body li { margin-bottom: 0.2em; }
+  .ctx-card .body .small { font-size: 0.78rem; color: var(--faint); }
+
+  /* reading path */
+  .stop {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.2em 1.4em;
+    margin-bottom: 1.2em;
+    position: relative;
+  }
+  .stop-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.7em;
+    margin-bottom: 0.3em;
+  }
+  .ord {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #2c3e50;
+    color: white;
+    width: 1.7em;
+    height: 1.7em;
+    border-radius: 50%;
+    font-size: 0.8rem;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .stop .files {
+    color: var(--faint);
+    font-size: 0.8rem;
+    font-family: "SF Mono", Menlo, monospace;
+    margin-top: 0.2em;
+    margin-bottom: 0.6em;
+  }
+  .bridge {
+    background: var(--bridge);
+    border-left: 3px solid var(--bridge-edge);
+    padding: 0.6em 0.9em;
+    margin: 0.7em 0;
+    font-size: 0.88rem;
+    color: var(--bridge-ink);
+    border-radius: 0 4px 4px 0;
+  }
+  .bridge .label {
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.65rem;
+    letter-spacing: 0.06em;
+    display: block;
+    margin-bottom: 0.2em;
+    opacity: 0.8;
+  }
+  .bridge a { color: var(--bridge-ink); text-decoration: underline; text-decoration-style: dotted; }
+
+  .diff {
+    background: #fcfcfa;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    margin-top: 0.6em;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.8rem;
+    overflow-x: auto;
+  }
+  .diff .line { display: block; padding: 0.05em 1em; white-space: pre; }
+  .diff .add { background: var(--add); }
+  .diff .del { background: var(--del); }
+  .diff .ctx { color: #555; }
+  .diff .hdr { color: var(--faint); background: var(--code-bg); }
+  .diff .annot {
+    background: #fff8e0;
+    color: #886633;
+    font-style: italic;
+    font-family: -apple-system, system-ui, sans-serif;
+    padding-left: 2em;
+    font-size: 0.78rem;
+  }
+  .diff .annot::before { content: "// "; opacity: 0.5; }
+
+  .next {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin-top: 0.8em;
+    padding-top: 0.6em;
+    border-top: 1px dashed var(--border);
+  }
+  .next::before { content: "↓ "; color: var(--faint); margin-right: 0.2em; }
+
+  /* review prompts */
+  .prompts {
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-edge);
+    border-radius: 10px;
+    padding: 1em 1.5em;
+    margin-top: 1.5em;
+  }
+  .prompts h4 { color: var(--accent); margin-top: 0.5em; }
+  .prompts ol { padding-left: 1.3em; margin: 0.4em 0; }
+  .prompts li { margin-bottom: 0.6em; font-size: 0.9rem; line-height: 1.5; }
+  .prompts li code { background: rgba(255,255,255,0.6); }
+
+  /* design notes */
+  .design-notes {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.2em 1.5em;
+    margin-top: 1.5em;
+    font-size: 0.92rem;
+    color: var(--ink);
+  }
+  .design-notes h4 { margin-top: 1.2em; }
+  .design-notes ul { padding-left: 1.2em; }
+  .design-notes li { margin-bottom: 0.4em; }
+  .placeholder-note {
+    color: var(--faint);
+    font-size: 0.78rem;
+    font-style: italic;
+  }
+
+  /* section divider */
+  section { padding-top: 1.5em; }
+</style>
+</head>
+<body>
+
+<nav class="top">
+  <strong>Code Review Surface · Prototype 01</strong>
+  <a href="#tachikoma">Tachikoma DLT-115</a>
+  <a href="#filadd">Filadd Scheduling Flow</a>
+  <a href="#notes">Design notes</a>
+</nav>
+
+<p class="intro">
+Two real PRs rendered through the same surface to test how it handles wildly different context shapes — one with everything embedded in the PR (Tachikoma, Katachi-driven), one with context spread across Notion + local transcripts + state files (Filadd). Content is illustrative, not literal.
+</p>
+
+<!-- ───────────────────────────── TACHIKOMA ───────────────────────────── -->
+<section id="tachikoma">
+<h1>Example A · Tachikoma <code>asermax/tachikoma#61</code></h1>
+
+<div class="pr-header">
+  <div class="title">DLT-115: Run and monitor detached shell commands</div>
+  <div class="meta">
+    <code>katachi/DLT-115</code> → <code>master</code>
+    · +3,330 / −12 over 36 files
+    · authored by <code>zenki-coordinator</code> bot
+    <span class="chip">phase: land ✓</span>
+  </div>
+  <div class="tldr">
+    Adds MCP tools to spawn, inspect, log-tail, rename, and terminate detached OS processes that outlive Tachikoma itself. The agent acts as a lightweight process supervisor — spawned children have no Claude/SDK involvement.
+  </div>
+</div>
+
+<h4>Context</h4>
+<div class="context-rail">
+
+  <details class="ctx-card" open>
+    <summary><span class="type">Spec</span> R0–R21</summary>
+    <div class="preview">22 requirements: 18 Must-have · 1 Nice-to-have · 5 Out</div>
+    <div class="body">
+      <strong>Core goal:</strong> MCP tools to spawn/inspect/log/terminate detached commands (R0).<br><br>
+      <strong>Highlighted requirements:</strong>
+      <ul>
+        <li><strong>R1</strong> — Hard detach: new session, stdio to log file</li>
+        <li><strong>R12</strong> — PID-reuse protection via start_time comparison</li>
+        <li><strong>R15</strong> — Proactive exit watcher dispatches notifications</li>
+        <li><strong>R8</strong> — Bootstrap crash-recovery</li>
+        <li><strong>R17, R18, R19, R20, R21</strong> — explicitly OUT</li>
+      </ul>
+      <span class="small">Full spec embedded in PR body — expand here in real version.</span>
+    </div>
+  </details>
+
+  <details class="ctx-card">
+    <summary><span class="type">Design</span> phase artifact</summary>
+    <div class="preview">Design doc lived on PR during design phase, deleted on land.</div>
+    <div class="body">
+      <span class="placeholder-note">Surface could reconstruct from the commit that deleted it, or from Katachi state. Placeholder.</span>
+    </div>
+  </details>
+
+  <details class="ctx-card">
+    <summary><span class="type">Plan</span> phase artifact</summary>
+    <div class="preview">Plan also deleted on land — 8 phases originally.</div>
+    <div class="body">
+      <span class="placeholder-note">Same reconstruction path. Placeholder.</span>
+    </div>
+  </details>
+
+  <details class="ctx-card">
+    <summary><span class="type">Related features</span> 2</summary>
+    <div class="preview">Cross-references to other features in the repo.</div>
+    <div class="body">
+      <ul>
+        <li><strong>DLT-098</strong> — Shared event bus & priority buffer (R15 dispatches through this)</li>
+        <li><strong>DES-011</strong> — Marker pattern (referenced in design)</li>
+      </ul>
+    </div>
+  </details>
+
+</div>
+
+<h4>Reading path</h4>
+
+<div class="stop">
+  <div class="stop-head"><span class="ord">1</span><h3>Where the new MCP tools are registered</h3></div>
+  <div class="files">tachikoma/mcp/registry.py</div>
+  <div class="bridge">
+    <span class="label">Bridge</span>
+    Entry point. Six new <code>@tool</code> decorators land here, one per public surface in the spec (R3, R4, R5, R6, R7, plus a list variant). <strong>Start here</strong> to see the API shape, then follow each tool down. R14 also touches this file (preamble mention).
+  </div>
+  <div class="diff">
+    <span class="line hdr">@@ tachikoma/mcp/registry.py @@</span>
+    <span class="line ctx">  from .tools import (</span>
+    <span class="line add">+     start_process, list_processes, get_process,</span>
+    <span class="line add">+     read_process_output, stop_process, rename_process,</span>
+    <span class="line ctx">  )</span>
+    <span class="line ctx">  </span>
+    <span class="line ctx">  REGISTRY = [</span>
+    <span class="line add">+     start_process,</span>
+    <span class="line add">+     list_processes,</span>
+    <span class="line annot">these 6 tools satisfy R3–R7. order in registry chosen for spec readability.</span>
+    <span class="line add">+     # ...</span>
+    <span class="line ctx">  ]</span>
+  </div>
+  <div class="next">Leads to: <a href="#t-stop2">Stop 2 — spawning a detached process</a></div>
+</div>
+
+<div class="stop" id="t-stop2">
+  <div class="stop-head"><span class="ord">2</span><h3>The <code>start_process</code> tool</h3></div>
+  <div class="files">tachikoma/mcp/tools/start_process.py</div>
+  <div class="bridge">
+    <span class="label">Bridge</span>
+    Implements <strong>R3</strong> (the public tool API) and pulls in R9 (env merge over OS env, <em>not</em> agent.env), R10 (log path), R11 (cwd default). The actual fork/setsid plumbing lives one stop deeper.
+  </div>
+  <div class="diff">
+    <span class="line hdr">@@ tachikoma/mcp/tools/start_process.py — new file @@</span>
+    <span class="line add">+ @tool</span>
+    <span class="line add">+ async def start_process(name: str, command: str, cwd: str | None = None, env: dict | None = None):</span>
+    <span class="line add">+     _validate_non_empty(name, "name")</span>
+    <span class="line add">+     _validate_non_empty(command, "command")</span>
+    <span class="line annot">R3 acceptance: clear error for empty name/command.</span>
+    <span class="line add">+     resolved_cwd = cwd or os.getcwd()</span>
+    <span class="line annot">R11 default: Tachikoma's cwd.</span>
+    <span class="line add">+     resolved_env = {**os.environ, **(env or {})}</span>
+    <span class="line annot">R9: OS env base; settings.agent.env intentionally excluded.</span>
+    <span class="line add">+     record = await supervisor.spawn(name, command, resolved_cwd, resolved_env)</span>
+    <span class="line add">+     return {"id": record.id, "pid": record.pid, "log_path": record.log_path}</span>
+  </div>
+  <div class="next">Leads to: <a href="#t-stop3">Stop 3 — the actual detach mechanism</a></div>
+</div>
+
+<div class="stop" id="t-stop3">
+  <div class="stop-head"><span class="ord">3</span><h3>The detach mechanism</h3></div>
+  <div class="files">tachikoma/process_supervisor/spawn.py</div>
+  <div class="bridge">
+    <span class="label">Bridge</span>
+    Implements <strong>R1</strong> — the actual hard-detach. <code>setsid</code> for new session, stdin to <code>/dev/null</code>, stdout+stderr appended to <code>{workspace}/.tachikoma/detached-processes/{id}.log</code> (R10).
+  </div>
+  <div class="diff">
+    <span class="line hdr">@@ process_supervisor/spawn.py — new file @@</span>
+    <span class="line add">+ async def spawn(name, command, cwd, env) -> ProcessRecord:</span>
+    <span class="line add">+     log_path = _log_path_for_id(record_id)</span>
+    <span class="line add">+     log_path.parent.mkdir(parents=True, exist_ok=True)</span>
+    <span class="line annot">R10 acceptance: clear error if dir cannot be created (handled by caller via exception).</span>
+    <span class="line add">+     log_fd = open(log_path, "ab")</span>
+    <span class="line add">+     proc = await asyncio.create_subprocess_shell(</span>
+    <span class="line add">+         command, cwd=cwd, env=env, stdin=DEVNULL,</span>
+    <span class="line add">+         stdout=log_fd, stderr=STDOUT, start_new_session=True,</span>
+    <span class="line annot">R1: start_new_session=True puts child in new session/pgrp — survives Tachikoma exit.</span>
+    <span class="line add">+     )</span>
+    <span class="line add">+     # ...record persistence in Stop 4...</span>
+  </div>
+  <div class="next">Leads to: <a href="#t-stop4">Stop 4 — record persistence + PID-reuse guard</a></div>
+</div>
+
+<div class="stop" id="t-stop4">
+  <div class="stop-head"><span class="ord">4</span><h3>Process record + PID-reuse protection</h3></div>
+  <div class="files">tachikoma/db/processes.py, migrations/0042_processes.sql</div>
+  <div class="bridge">
+    <span class="label">Bridge</span>
+    Implements <strong>R2</strong> (record fields) and <strong>R12</strong> (PID-reuse guard). The <code>pid_start_time</code> column is the entire safety mechanism — without it a recycled PID could be misidentified as "still alive" after Tachikoma restart.
+  </div>
+  <div class="diff">
+    <span class="line hdr">@@ migrations/0042_processes.sql — new file @@</span>
+    <span class="line add">+ CREATE TABLE detached_processes (</span>
+    <span class="line add">+   id TEXT PRIMARY KEY, name TEXT, command TEXT, cwd TEXT,</span>
+    <span class="line add">+   pid INTEGER, pid_start_time INTEGER NOT NULL,</span>
+    <span class="line annot">R12: stored alongside PID so liveness checks compare both.</span>
+    <span class="line add">+   log_path TEXT, status TEXT, exit_code INTEGER,</span>
+    <span class="line add">+   started_at INTEGER, exited_at INTEGER</span>
+    <span class="line add">+ );</span>
+  </div>
+  <div class="next">Leads to: <a href="#t-stop5">Stop 5 — proactive exit watcher</a></div>
+</div>
+
+<div class="stop" id="t-stop5">
+  <div class="stop-head"><span class="ord">5</span><h3>The watcher (proactive exit detection)</h3></div>
+  <div class="files">tachikoma/process_supervisor/watcher.py</div>
+  <div class="bridge">
+    <span class="label">Bridge</span>
+    Implements <strong>R15</strong> — the most interesting part of this PR. Subsystem-owned background loop. Detects exits, stamps the record, then dispatches a <code>Notification</code> event on the shared event bus (cross-feature reference: <strong>DLT-098</strong>). Priority is Urgent on abnormal exit, Normal on clean exit. <em>Sole producer</em> of exit notifications — <code>stop_process</code> intentionally does not dispatch one.
+  </div>
+  <div class="diff">
+    <span class="line hdr">@@ process_supervisor/watcher.py — new file @@</span>
+    <span class="line add">+ async def watch_running():</span>
+    <span class="line add">+     while not shutting_down:</span>
+    <span class="line add">+         for rec in await db.list_running():</span>
+    <span class="line add">+             if not _is_alive(rec.pid, rec.pid_start_time):</span>
+    <span class="line annot">R12: liveness checks both PID and start_time to defeat PID reuse.</span>
+    <span class="line add">+                 exit_code = _try_reap(rec.pid)</span>
+    <span class="line add">+                 await db.mark_exited(rec.id, exit_code)</span>
+    <span class="line add">+                 priority = Urgent if (exit_code != 0 or exit_code is None) else Normal</span>
+    <span class="line annot">R15: "unknown" exit_code → Urgent (P10 capture mechanism did not yield).</span>
+    <span class="line add">+                 await event_bus.dispatch(Notification(..., priority=priority))</span>
+    <span class="line add">+         await asyncio.sleep(POLL_INTERVAL)</span>
+  </div>
+  <div class="next">Leads to: <a href="#t-stop6">Stop 6 — crash-recovery on startup</a></div>
+</div>
+
+<div class="stop" id="t-stop6">
+  <div class="stop-head"><span class="ord">6</span><h3>Crash-recovery bootstrap</h3></div>
+  <div class="files">tachikoma/bootstrap.py</div>
+  <div class="bridge">
+    <span class="label">Bridge</span>
+    Implements <strong>R8</strong>. Runs once on startup <em>before</em> any tools accept calls. Reconciles records marked <code>running</code> against actual PID liveness (using the same start_time guard from R12). Without this, a stale "running" record persists across crashes.
+  </div>
+  <div class="diff">
+    <span class="line hdr">@@ tachikoma/bootstrap.py @@</span>
+    <span class="line ctx">  async def on_startup():</span>
+    <span class="line add">+     await reconcile_detached_processes()</span>
+    <span class="line ctx">      await mcp_server.start()</span>
+    <span class="line annot">order matters: reconciliation runs before tools accept calls.</span>
+  </div>
+  <div class="next">Leads to: <a href="#t-stop7">Stop 7 — the remaining inspection tools</a></div>
+</div>
+
+<div class="stop" id="t-stop7">
+  <div class="stop-head"><span class="ord">7</span><h3>Inspection &amp; lifecycle tools (grouped)</h3></div>
+  <div class="files">tools/{list,get,read_output,stop,rename}_process.py</div>
+  <div class="bridge">
+    <span class="label">Bridge</span>
+    The remaining tools (R4, R5, R6, R7). Mostly mechanical — but worth a quick eye for: tail-by-default in <code>read_process_output</code> (R5), SIGTERM→SIGKILL escalation in <code>stop_process</code> (R6), and that <code>rename_process</code> only updates the display label (R7, R16: names are non-unique).
+  </div>
+  <div class="diff">
+    <span class="line hdr">@@ 5 new files, ~30 lines each @@</span>
+    <span class="line add">+ (collapsed)</span>
+  </div>
+</div>
+
+<div class="prompts">
+  <h4>Review prompts</h4>
+  <ol>
+    <li><strong>R12 PID-reuse guard:</strong> verify <code>pid_start_time</code> is read from the OS at spawn time (<code>/proc/{pid}/stat</code> on Linux), not approximated from <code>started_at</code>. Drift between these would defeat the guard.</li>
+    <li><strong>R15 watcher proactivity:</strong> is exit detection truly proactive (background loop runs without external trigger), or does it secretly piggyback on the next tool call? Read the lifecycle of <code>watch_running</code> in <code>bootstrap.py</code>.</li>
+    <li><strong>R15 sole-producer invariant:</strong> grep for <code>Notification(</code> dispatches outside the watcher — there should be zero for exit events. Confirm <code>stop_process</code> does <em>not</em> dispatch one.</li>
+    <li><strong>R17 (concurrency limit is OUT):</strong> is there any accidental cap that would limit concurrent spawns? (file descriptor count, DB connection pool, asyncio semaphore left in by mistake).</li>
+    <li><strong>R10 log persistence:</strong> log files remain on disk after exit — confirm no cleanup code in <code>mark_exited</code> or the watcher.</li>
+    <li><strong>R14 preamble:</strong> the base system prompt should mention these tools. Find where, and check the wording is generic enough that it won't drift from reality when tools change.</li>
+  </ol>
+</div>
+
+</section>
+
+<!-- ───────────────────────────── FILADD ───────────────────────────── -->
+<section id="filadd">
+<h1>Example B · Filadd <code>filadd/scheduler-api#323</code></h1>
+
+<div class="pr-header">
+  <div class="title">Scheduling Flow Engine — Foundation</div>
+  <div class="meta">
+    <code>feat/scheduling-flow-engine-foundation</code> → <code>develop</code>
+    · +9,322 / −5,622 over 100 files
+    · authored by <code>aguizquierdo</code>
+    <span class="chip muted">no PR body</span>
+    <span class="chip warn">context external</span>
+  </div>
+  <div class="tldr">
+    Foundation for the pre-session orchestrator: 4 new MySQL tables (<code>scheduling_flow</code>, <code>scheduling_flow_step</code>, <code>scheduling_flow_step_transition</code>, <code>scheduling_flow_run</code>), a new <code>scheduling_mode</code> flag on <code>service</code>, the minimal <code>intro → calendar → confirmation</code> flow, and linear-only transitions. Legacy paths preserved via <code>legacy_*</code> endpoints for sequential-mode services.
+  </div>
+</div>
+
+<h4>Context</h4>
+<div class="context-rail">
+
+  <details class="ctx-card" open>
+    <summary><span class="type">Scope · Notion</span> Foundation</summary>
+    <div class="preview">"Motor de flujos + sala mínima (fundación)" — the slice this PR delivers.</div>
+    <div class="body">
+      <strong>Decisions taken (from scope doc):</strong>
+      <ul>
+        <li><code>scheduling_mode</code> merges here; defaults to <code>sequential</code> so mobile/legacy keep working</li>
+        <li><strong>Linear transitions only</strong> — <code>next_step_id</code> pointer, no condition DSL</li>
+        <li>Freeze + join live in foundation (no scheduled jobs; computed in read time from <code>session.start_time</code>)</li>
+        <li>Run id travels via Calendly prefill + UTM, echoed back in webhook</li>
+        <li>No cancel API yet — deferred to scope 10</li>
+      </ul>
+      <strong>Out of scope:</strong> conditional transitions (scope 2), richer step types (scopes 3/4/5), counselor panel (12), A/B variant resolution (13), webhook decomposition (19).
+    </div>
+  </details>
+
+  <details class="ctx-card">
+    <summary><span class="type">Design · Notion</span> Full vision</summary>
+    <div class="preview">"Pre-session Orchestrator" — the eventual shape this is a strict subset of.</div>
+    <div class="body">
+      Full vision includes 7 step types (<code>intro, select, validation, chat, resource, calendar, confirmation</code>), conditional transitions, A/B variants per service, answer mirroring to Mongo profile, GenIA-generated pre-session summaries, cross-service redirects.
+      <br><br>
+      <span class="small">This foundation only implements <code>intro / calendar / confirmation</code> with linear transitions. Use design doc to predict the shape of forward-compatibility decisions in this PR.</span>
+    </div>
+  </details>
+
+  <details class="ctx-card">
+    <summary><span class="type">Transcripts · Local</span> 21 recordings</summary>
+    <div class="preview">Mar 20 → May 8 stakeholder conversations.</div>
+    <div class="body">
+      <span class="small">Surface fetches summaries via local file reads. Examples of what each recording likely covered:</span>
+      <ul>
+        <li><code>20260320</code> — initial framing of the waiting room concept</li>
+        <li><code>20260417</code> — decision: linear transitions only in foundation</li>
+        <li><code>20260429</code> — decision: <code>scheduling_mode</code> default <code>sequential</code></li>
+        <li><span class="placeholder-note">Surface would index recordings by topic, link from bridge notes.</span></li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="ctx-card">
+    <summary><span class="type">State · Local</span> Agent memory</summary>
+    <div class="preview">Living state.md tracking the agent's working context.</div>
+    <div class="body">
+      <span class="placeholder-note">~60k tokens. Surface would extract only the sections relevant to the changes — e.g. open questions, current focus, decisions made. Not displayed verbatim.</span>
+    </div>
+  </details>
+
+  <details class="ctx-card">
+    <summary><span class="type">Repo · Coexistence</span> legacy_*</summary>
+    <div class="preview">The old paths preserved alongside the new ones.</div>
+    <div class="body">
+      <code>legacy_event.py</code>, <code>legacy_service.py</code>, <code>legacy_session.py</code> — split off so the old recurrence-pointer path continues to serve services with <code>scheduling_mode = sequential</code>. This is a coexistence pattern, not dead code.
+    </div>
+  </details>
+
+</div>
+
+<h4>Reading path</h4>
+
+<div class="stop">
+  <div class="stop-head"><span class="ord">1</span><h3>The bifurcation point — <code>scheduling_mode</code></h3></div>
+  <div class="files">app/models/service.py, migration</div>
+  <div class="bridge">
+    <span class="label">Bridge</span>
+    The whole PR hinges on this column. Per the scope doc: <em>"defaults to <code>sequential</code> so mobile/legacy keep working intact"</em>. Backend branches on this to choose validation path. <strong>Start here</strong> — without it the rest doesn't make sense.
+  </div>
+  <div class="diff">
+    <span class="line hdr">@@ app/models/service.py @@</span>
+    <span class="line ctx">  class Service(Base):</span>
+    <span class="line add">+     scheduling_mode = Column(Enum("sequential", "multievent"),</span>
+    <span class="line add">+                              nullable=False, default="sequential")</span>
+    <span class="line annot">scope decision: default sequential so existing services stay on legacy path.</span>
+  </div>
+  <div class="next">Leads to: <a href="#f-stop2">Stop 2 — the four new tables</a></div>
+</div>
+
+<div class="stop" id="f-stop2">
+  <div class="stop-head"><span class="ord">2</span><h3>The four new flow tables</h3></div>
+  <div class="files">app/models/scheduling_flow*.py</div>
+  <div class="bridge">
+    <span class="label">Bridge</span>
+    Foundation introduces 4 tables, intentionally a strict subset of the design doc's 5. The design doc adds <code>scheduling_flow_run_step_entry</code> later for richer step history — <strong>not present here</strong>, so this PR uses a simpler model (single <code>current_step_id</code> on the run, no per-step entry rows). Worth confirming this is the intended foundation shape vs. an oversight.
+  </div>
+  <div class="diff">
+    <span class="line hdr">@@ app/models/scheduling_flow_step_transition.py @@</span>
+    <span class="line add">+ class SchedulingFlowStepTransition(Base):</span>
+    <span class="line add">+     from_step_id = Column(...)</span>
+    <span class="line add">+     to_step_id = Column(...)</span>
+    <span class="line annot">scope: linear-only — no condition column in foundation. Watch for one sneaking in.</span>
+  </div>
+  <div class="next">Leads to: <a href="#f-stop3">Stop 3 — the engine API</a></div>
+</div>
+
+<div class="stop" id="f-stop3">
+  <div class="stop-head"><span class="ord">3</span><h3>The engine API endpoints</h3></div>
+  <div class="files">app/endpoints/scheduling_flow_run.py, scheduling_flow_step.py</div>
+  <div class="bridge">
+    <span class="label">Bridge</span>
+    Six surfaces from the design doc: resolve-flow, advance-run, back/reset, calendar-embed, poll-status, counselor-read. Foundation likely ships a subset — verify which are present and which are stubs/deferred. <strong>No cancel API</strong> by scope decision (deferred to scope 10).
+  </div>
+  <div class="diff">
+    <span class="line hdr">@@ app/endpoints/scheduling_flow_run.py — new file @@</span>
+    <span class="line add">+ @router.post("/runs/{run_id}/advance")</span>
+    <span class="line add">+ async def advance(run_id, answer):</span>
+    <span class="line annot">design doc: returns 409 for externally-managed steps (calendar). Confirm here.</span>
+    <span class="line add">+     ...</span>
+  </div>
+  <div class="next">Leads to: <a href="#f-stop4">Stop 4 — Calendly webhook correlation</a></div>
+</div>
+
+<div class="stop" id="f-stop4">
+  <div class="stop-head"><span class="ord">4</span><h3>Calendly webhook correlation</h3></div>
+  <div class="files">app/endpoints/event.py (webhook handler), app/services/calendly_account.py</div>
+  <div class="bridge">
+    <span class="label">Bridge</span>
+    The integration point. Per scope: <em>"in invitee_created busca el run, crea la sesión como siempre, estampa <code>scheduling_flow_run.session_id</code> y avanza a confirmación"</em>. Smallest possible webhook change — the full decomposition is scope 19 (stretch). Run id flows in via Calendly prefill/UTM.
+  </div>
+  <div class="diff">
+    <span class="line hdr">@@ app/endpoints/event.py @@</span>
+    <span class="line ctx">  async def calendly_webhook(payload):</span>
+    <span class="line add">+     if run_id := _extract_run_id(payload):</span>
+    <span class="line add">+         await link_session_to_run(run_id, session.id)</span>
+    <span class="line annot">scope: smallest possible change — full webhook decomposition deferred to scope 19.</span>
+  </div>
+  <div class="next">Leads to: <a href="#f-stop5">Stop 5 — why the legacy_* files exist</a></div>
+</div>
+
+<div class="stop" id="f-stop5">
+  <div class="stop-head"><span class="ord">5</span><h3>The <code>legacy_*</code> coexistence layer</h3></div>
+  <div class="files">app/endpoints/legacy_event.py, legacy_service.py, legacy_session.py + repositories</div>
+  <div class="bridge">
+    <span class="label">Bridge</span>
+    Looks like duplication at first glance — it isn't. Services with <code>scheduling_mode = sequential</code> (everyone, by default) still need the old recurrence-pointer path. Splitting it into <code>legacy_*</code> keeps the original code intact and lets the new path evolve without breakage. <strong>This is a foundation property</strong>, not tech debt.
+  </div>
+  <div class="diff">
+    <span class="line hdr">@@ app/endpoints/legacy_event.py — moved from event.py @@</span>
+    <span class="line add">+ # Routes preserved for scheduling_mode=sequential services.</span>
+    <span class="line add">+ # New event.py only handles multievent-mode requests.</span>
+  </div>
+  <div class="next">Leads to: <a href="#f-stop6">Stop 6 — freeze + join state in reads</a></div>
+</div>
+
+<div class="stop" id="f-stop6">
+  <div class="stop-head"><span class="ord">6</span><h3>Freeze state computed in reads</h3></div>
+  <div class="files">app/services/session.py (or BFF read assembler)</div>
+  <div class="bridge">
+    <span class="label">Bridge</span>
+    Per scope: <em>"el threshold se calcula en lectura según el start time, sin jobs programados"</em>. So a Frozen state is <strong>not</strong> persisted — it's derived on read from <code>session.start_time - freeze_threshold</code>. <strong>Critical to verify no scheduled job snuck in</strong> — that would contradict the design.
+  </div>
+  <div class="diff">
+    <span class="line hdr">@@ services/session.py @@</span>
+    <span class="line add">+ def derive_run_state(run, session):</span>
+    <span class="line add">+     if session and _within_freeze_window(session.start_time):</span>
+    <span class="line add">+         return "frozen"</span>
+    <span class="line annot">freeze state is derived, never stored.</span>
+  </div>
+</div>
+
+<div class="prompts">
+  <h4>Review prompts</h4>
+  <ol>
+    <li><strong>Linear-transitions-only invariant:</strong> grep <code>scheduling_flow_step_transition</code> for any <code>condition</code> column / JSON field. Scope explicitly defers the matcher DSL — make sure no scaffolding for it leaked in.</li>
+    <li><strong>Default <code>sequential</code>:</strong> is it enforced in the migration (with a backfill of existing rows), or only at the SQLAlchemy default? Existing rows in prod must come out as <code>sequential</code>.</li>
+    <li><strong>No scheduled job for freeze:</strong> grep the jobs dir (<code>app/jobs/</code>) for anything referencing freeze or 10-minute thresholds. The diff already touches <code>app/jobs/</code> heavily — make sure that's unrelated.</li>
+    <li><strong>Run-id propagation:</strong> trace the round-trip — which endpoint embeds the run id into the Calendly URL, where does the webhook extract it back, and what happens if it's missing/malformed?</li>
+    <li><strong>Single <code>current_step_id</code> on run:</strong> design doc evolves to a richer <code>scheduling_flow_run_step_entry</code> table. Confirm the foundation's simpler shape is a deliberate decision (not yet needed) vs. an oversight that will require a destructive migration.</li>
+    <li><strong>No cancel API:</strong> scope says deferred. Grep the new endpoints for any cancel stub or unused method — if present, it's a foundation-leak from scope 10.</li>
+    <li><strong>Legacy split is clean:</strong> imports in non-legacy code should not reference <code>legacy_*</code> modules, and vice versa. If there's cross-import, the split is leaky.</li>
+  </ol>
+</div>
+
+</section>
+
+<!-- ───────────────────────────── DESIGN NOTES ───────────────────────────── -->
+<section id="notes">
+<h2>Design notes from this prototype</h2>
+<div class="design-notes">
+
+<h4>What this exercise reveals about the shape</h4>
+<ul>
+  <li><strong>Context cards must be typed.</strong> "Spec / Design / Plan / Transcript / State / Related / External doc" — the type drives both the icon/treatment and the way annotations reference them (e.g. spec is queryable by requirement ID, design is queryable by section).</li>
+  <li><strong>Bridge notes are the highest-value element.</strong> They're where the surface earns its keep — converting "raw diff" into "diff in context". They should be short, opinionated, and link back to context cards by reference (R3, scope-doc-decision, etc.).</li>
+  <li><strong>Reading order is the second most important thing.</strong> Both PRs make sense in non-alphabetical order: Tachikoma starts at the MCP registry (the public surface), then drills down through the call stack. Filadd starts at <code>scheduling_mode</code> (the bifurcation), then introduces the new tables, then the API. <strong>Alphabetical file lists are useless for review</strong>.</li>
+  <li><strong>"No PR body" is a first-class case.</strong> The Filadd surface is generated almost entirely from external context — Notion + local files. The surface degrades gracefully and the context rail is where this becomes visible (it's still populated, just from elsewhere).</li>
+  <li><strong>Phase artifacts (Katachi) deserve their own treatment.</strong> The fact that spec/design/plan live on the PR temporarily and get deleted on land is meaningful — the surface should reconstruct them from history rather than treating them as "missing".</li>
+  <li><strong>Review prompts are scope-aware.</strong> The best prompts are the ones that test invariants the docs commit to ("scope says linear-only — confirm nothing else snuck in"). Generic "is the test coverage good?" prompts add no value.</li>
+</ul>
+
+<h4>Open questions surfaced</h4>
+<ul>
+  <li>Inline annotations inside the diff (the <code>// annot</code> lines) compete visually with the bridge note above. Both, or one? My guess: bridge note for the "why this stop exists", inline annot for "this specific line matters because…".</li>
+  <li>Should "Next" pointers be <em>linear</em> (one path) or should the surface allow <em>branches</em> (e.g. "the watcher leads to the event bus; the spawn leads to the DB")? Branches are more faithful but harder to render.</li>
+  <li>How does the surface stay in sync when the PR is updated? Re-generate, or stream diff updates into existing stops?</li>
+  <li>For the Filadd case, the state.md file is 60k tokens. Indexing and summarizing it is its own subproblem. Same for transcripts. <strong>This is where composability with other skills becomes valuable</strong> — a "summarize transcripts" skill produces a context card, the review surface consumes it.</li>
+  <li>The composition model: is each context source fetched by a <em>plugin</em> (Notion plugin, transcript plugin, GitHub PR plugin) that returns a typed card? That's the cleanest abstraction I can see — it answers the "easily composable" requirement directly.</li>
+</ul>
+
+<h4>What I'd want to try next</h4>
+<ul>
+  <li>Sketch the <em>generator</em> side: given a PR + list of context sources, what's the algorithm that produces this surface? Reading-path inference is the hardest part.</li>
+  <li>Try a third PR with a <em>very</em> different shape — maybe a security/perf fix where the "why" is a single sentence — to stress-test "graceful degradation".</li>
+  <li>Decide on inline annotations vs. side margin annotations (right-rail comments) — different ergonomics for long diffs.</li>
+</ul>
+
+</div>
+</section>
+
+</body>
+</html>
