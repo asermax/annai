@@ -24,8 +24,8 @@ What works:
 
 - The `review` skill walks the agent through generating `surface.json`
   from a PR + arbitrary context.
-- A local daemon serves a React frontend (diff rendering via `diff2html`,
-  diagrams via `mermaid`).
+- A local daemon serves a React frontend (diff rendering via
+  `@pierre/diffs`, diagrams via `mermaid`).
 - All the daemon scaffolding for the live interactive flow — unix-socket
   IPC, typed event bus with watch filter, atomic state checkpoints — is
   already wired, so v0.2 fills in handlers rather than rewriting plumbing.

@@ -1,12 +1,20 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 
 import { Note } from '../../src/frontend/components/Note.tsx'
+
+const baseProps = {
+  marginTop: 0,
+  naturalHeight: null,
+  collapsedHeight: 32,
+  onNaturalHeightChange: () => {},
+}
 
 describe('<Note>', () => {
   it('renders title + kind label + line range', () => {
     render(
       <Note
+        {...baseProps}
         annotation={{
           id: 'a1',
           kind: 'discrepancy',
@@ -14,7 +22,8 @@ describe('<Note>', () => {
           body: 'The doc says `foo`; the code says `bar`.',
           lineRange: [10, 20],
         }}
-        top={0}
+        collapsed={false}
+        onToggle={() => {}}
       />,
     )
 
@@ -23,19 +32,42 @@ describe('<Note>', () => {
     expect(screen.getByText('L10–20')).toBeInTheDocument()
   })
 
-  it('defaults to showing the body and toggles to collapsed on click', () => {
+  it('calls onToggle when clicked', () => {
+    const onToggle = vi.fn()
     const { container } = render(
       <Note
+        {...baseProps}
         annotation={{ id: 'a1', kind: 'note', title: 'T', body: 'B', lineRange: [1, 1] }}
-        top={0}
+        collapsed={false}
+        onToggle={onToggle}
       />,
     )
 
-    const note = container.querySelector('.note')!
-    expect(note.classList.contains('collapsed')).toBe(false)
-    fireEvent.click(note)
-    expect(note.classList.contains('collapsed')).toBe(true)
-    fireEvent.click(note)
-    expect(note.classList.contains('collapsed')).toBe(false)
+    fireEvent.click(container.querySelector('.note')!)
+    expect(onToggle).toHaveBeenCalledTimes(1)
+  })
+
+  it('applies the collapsed class when collapsed', () => {
+    const { container, rerender } = render(
+      <Note
+        {...baseProps}
+        annotation={{ id: 'a1', kind: 'note', title: 'T', body: 'B', lineRange: [1, 1] }}
+        collapsed={false}
+        onToggle={() => {}}
+      />,
+    )
+
+    expect(container.querySelector('.note')!.classList.contains('collapsed')).toBe(false)
+
+    rerender(
+      <Note
+        {...baseProps}
+        annotation={{ id: 'a1', kind: 'note', title: 'T', body: 'B', lineRange: [1, 1] }}
+        collapsed={true}
+        onToggle={() => {}}
+      />,
+    )
+
+    expect(container.querySelector('.note')!.classList.contains('collapsed')).toBe(true)
   })
 })

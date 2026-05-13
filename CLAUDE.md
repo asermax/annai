@@ -4,7 +4,7 @@ Claude Code plugin that turns a code review into a guided browser surface.
 A `review` skill walks the agent through generating a structured JSON view
 of a pull request — base context first, then entry points, then supporting
 code, with typed side notes and inline suggestions — and a local daemon
-serves it in the browser via `diff2html` + mermaid.
+serves it in the browser via `@pierre/diffs` + mermaid.
 
 The conceptual case lives in [docs/code-review-surface.md](docs/code-review-surface.md);
 the full runtime design lives in [docs/annai-architecture.md](docs/annai-architecture.md).
@@ -78,7 +78,7 @@ The agent never speaks HTTP — only via `annai.sh` subcommands.
 
 - **Hunks in `surface.json` must reproduce the actual PR exactly.** No
   fictional diff lines. The frontend reconstructs a unified diff from the
-  typed `Hunk[]` and hands it to `diff2html`.
+  typed `Hunk[]` and hands it to `@pierre/diffs`'s `<PatchDiff>`.
 - **All annotations must be grounded** in the diff or supplied context — no
   speculation. Doc-vs-code mismatches are an explicit `discrepancy` kind.
 - **No TypeScript `enum`.** Annotation/group/event kinds are `as const` maps
@@ -108,8 +108,6 @@ The agent never speaks HTTP — only via `annai.sh` subcommands.
   ask-agent / draft-comment / submit-review flows they drive.
 - `gh pr review` submission step (mapping `result.json` to
   `POST /repos/.../pulls/{n}/reviews`).
-- `diffs.com` as a diff renderer — `diff2html` is the v0.1 choice; revisit
-  once licensing terms are confirmed.
 - Multi-session UX polish, watch reconnect/replay from `events.log` offsets,
   Claude Code marketplace publication.
 

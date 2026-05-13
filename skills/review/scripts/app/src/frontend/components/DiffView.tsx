@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef } from 'react'
-import { html as diff2htmlRender } from 'diff2html'
+import { forwardRef, useMemo } from 'react'
+import { PatchDiff } from '@pierre/diffs/react'
 import type { Diff, Hunk } from '../../shared/surface.ts'
 import { SuggestionBlock } from './SuggestionBlock.tsx'
 
@@ -23,29 +23,22 @@ const buildUnifiedDiff = (diff: Diff): string => {
   return header + body + '\n'
 }
 
-export const DiffView = ({ diff }: Props) => {
-  const containerRef = useRef<HTMLDivElement | null>(null)
+export const DiffView = forwardRef<HTMLDivElement, Props>(({ diff }, ref) => {
   const unified = useMemo(() => buildUnifiedDiff(diff), [diff])
 
-  useEffect(() => {
-    if (containerRef.current == null) return
-    const html = diff2htmlRender(unified, {
-      drawFileList: false,
-      matching: 'lines',
-      outputFormat: 'line-by-line',
-    })
-    containerRef.current.innerHTML = html
-  }, [unified])
-
   return (
-    <div className="diff">
+    <div className="diff" ref={ref}>
       <div className="diff-head">
         <span className="path">{diff.path}</span>
       </div>
-      <div className="diff-body" ref={containerRef} />
+      <div className="diff-body">
+        <PatchDiff patch={unified} disableWorkerPool />
+      </div>
       {diff.suggestions.map(suggestion => (
         <SuggestionBlock key={suggestion.id} suggestion={suggestion} />
       ))}
     </div>
   )
-}
+})
+
+DiffView.displayName = 'DiffView'

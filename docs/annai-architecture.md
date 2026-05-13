@@ -25,7 +25,7 @@ CLI surface, and skill responsibilities so implementation can start.
 |---|---|---|
 | 1 | Scope | Plugin contains **both** the runtime (CLI + daemon + frontend) and the agent skill. The skill *generates* the surface JSON; the CLI/daemon *consumes* it and runs the interactive session. |
 | 2 | v1 interactivity | Design for the **full vision** — Monitor-streamed events for the actions the agent must react to, `annai reply` for "ask agent" threads. Cut corners later if needed. |
-| 3 | Stack | **TypeScript** end-to-end. Frontend is **React + Vite**, diff rendering via **diffs.com**. Tests via **vitest**. |
+| 3 | Stack | **TypeScript** end-to-end. Frontend is **React + Vite**, diff rendering via **`@pierre/diffs`** (Apache-2.0). Tests via **vitest**. |
 | 4 | Event channel | `annai watch --session <id>` subcommand emitting **line-delimited JSON** on stdout. **Only events the agent must act on are emitted** — quiet by default so Monitor doesn't wake the agent on every browser keystroke. |
 | 5 | Entry script | A single `annai.sh` runs the node code directly (no separate compiled binary). Does first-run bootstrap (`npm install`) internally; subsequent runs short-circuit. |
 | 6 | Runtime state location | `$XDG_RUNTIME_DIR/annai/sessions/<id>/` (with `${TMPDIR:-/tmp}/annai-$UID/` fallback when `$XDG_RUNTIME_DIR` is unset). |
@@ -46,7 +46,7 @@ flowchart LR
     daemon["annai daemon (long-lived)"]
     state["session state dir"]
   end
-  browser["Browser UI (React + diffs.com)"]
+  browser["Browser UI (React + @pierre/diffs)"]
 
   agent -->|Monitor stdout| watchcli
   agent -->|Bash| cmdcli
@@ -198,7 +198,7 @@ annai/
                 │       ├── components/
                 │       │   ├── PRHeader.tsx
                 │       │   ├── Group.tsx
-                │       │   ├── DiffView.tsx       # wraps diffs.com
+                │       │   ├── DiffView.tsx       # wraps @pierre/diffs's <PatchDiff>
                 │       │   ├── Annotation.tsx
                 │       │   ├── DraftComment.tsx
                 │       │   ├── AskAgentThread.tsx
@@ -476,7 +476,6 @@ These don't change the architecture shape — they're fillable as we build:
 - **Frontend state library**: Zustand vs Jotai vs plain React context. Pick during impl based on complexity of the draft/thread state.
 - **Watch reconnect semantics**: should `watch` replay events since last offset on reconnect (using `events.log`), or only emit from now? Probably "since offset" for resilience.
 - **Authentication / multi-user**: out of scope for v1; daemon binds to `127.0.0.1`. Sharing comes later (plannotator-style encrypted-share link is a natural extension).
-- **diffs.com licensing & bundling**: confirm terms before publishing the plugin. Fallback is `diff2html`.
 - **Plugin marketplace publication**: target the official marketplace once stable and dogfooded on Tachikoma + Filadd PRs.
 - **Multiple concurrent sessions per host**: state files are per-session, so technically supported. No tests for it in v1.
 
@@ -515,7 +514,7 @@ End-to-end smoke path on a real PR (Tachikoma is the simplest first target —
 context lives in the PR body already):
 
 1. Author a `surface.json` by hand (skip the agent-generation step) for the chosen PR.
-2. Run `annai.sh start --surface … --session smoke1` — confirm daemon starts, browser opens, diffs render via diffs.com.
+2. Run `annai.sh start --surface … --session smoke1` — confirm daemon starts, browser opens, diffs render via `@pierre/diffs`.
 3. Run `annai.sh watch --session smoke1` in a terminal — confirm the stream stays quiet (no `session-started` chatter).
 4. In the browser: hover a line, add a draft comment — confirm watch stays silent and `annai.sh status` reflects the draft.
 5. Trigger "Ask agent" on a note — confirm `agent-asked` arrives on watch; in another terminal run `annai.sh reply --session smoke1 --thread <id> "test answer"` and confirm the browser inlines it.
