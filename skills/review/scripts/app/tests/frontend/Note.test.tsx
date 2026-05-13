@@ -23,7 +23,7 @@ describe('<Note>', () => {
     expect(screen.getByText('L10–20')).toBeInTheDocument()
   })
 
-  it('toggles expanded class on click', () => {
+  it('defaults to showing the body and toggles to collapsed on click', () => {
     const { container } = render(
       <Note
         annotation={{ id: 'a1', kind: 'note', title: 'T', body: 'B', lineRange: [1, 1] }}
@@ -32,8 +32,10 @@ describe('<Note>', () => {
     )
 
     const note = container.querySelector('.note')!
+    expect(note.classList.contains('collapsed')).toBe(false)
+    fireEvent.click(note)
     expect(note.classList.contains('collapsed')).toBe(true)
     fireEvent.click(note)
-    expect(note.classList.contains('expanded')).toBe(true)
+    expect(note.classList.contains('collapsed')).toBe(false)
   })
 })
