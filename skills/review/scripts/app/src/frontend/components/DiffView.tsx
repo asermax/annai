@@ -32,7 +32,7 @@ export const DiffView = forwardRef<HTMLDivElement, Props>(({ diff }, ref) => {
         <span className="path">{diff.path}</span>
       </div>
       <div className="diff-body">
-        <PatchDiff patch={unified} disableWorkerPool />
+        <PatchDiff patch={unified} options={{ diffStyle: 'unified' }} disableWorkerPool />
       </div>
       {diff.suggestions.map(suggestion => (
         <SuggestionBlock key={suggestion.id} suggestion={suggestion} />

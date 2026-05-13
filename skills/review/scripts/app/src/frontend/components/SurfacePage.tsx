@@ -3,6 +3,7 @@ import { PRHeader } from './PRHeader.tsx'
 import { OutlineNav } from './OutlineNav.tsx'
 import { Group } from './Group.tsx'
 import { MermaidDiagram } from './MermaidDiagram.tsx'
+import { ThemeToggle } from './ThemeToggle.tsx'
 
 interface Props {
   surface: Surface
@@ -16,6 +17,7 @@ export const SurfacePage = ({ surface }: Props) => {
         <span className="pill">v0.1 · read-only</span>
         <span className="pill mono">{surface.pr.title.slice(0, 60)}{surface.pr.title.length > 60 ? '…' : ''} #{surface.pr.number}</span>
         <span className="spacer" />
+        <ThemeToggle />
       </nav>
 
       <OutlineNav groups={surface.groups} />
