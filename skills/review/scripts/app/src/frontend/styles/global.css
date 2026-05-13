@@ -158,6 +158,8 @@ nav.top .spacer { flex: 1; }
 .outline-nav .full .item.h2 { font-weight: 600; margin-top: 6px; }
 .outline-nav .full .item.h3 { color: var(--muted); padding-left: 18px; font-weight: 400; font-size: 12.5px; }
 .outline-nav .full .item span:last-child { white-space: nowrap; }
+.outline-nav .compact .dash.active { background: var(--accent); opacity: 1; }
+.outline-nav .full .item.active { color: var(--accent); background: var(--bg-alt); }
 
 /* PR header */
 .pr-header {
