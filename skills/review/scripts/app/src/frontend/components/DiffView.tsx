@@ -9,6 +9,7 @@ import { useDrafts } from '../state/drafts.tsx'
 import { DraftComposer } from './DraftComposer.tsx'
 import { DraftDisplay } from './DraftDisplay.tsx'
 import { FileCommentComposer } from './FileCommentComposer.tsx'
+import { FileLevelComments } from './FileLevelComments.tsx'
 import { SuggestionBlock } from './SuggestionBlock.tsx'
 
 interface Props {
@@ -158,22 +159,28 @@ export const DiffView = forwardRef<HTMLDivElement, Props>(({ diff }, ref) => {
   }, [draftsById, suggestionsById, drafts.activeAnchor, diff.path])
 
   const fileComposerOpen = drafts.activeFileComposerPath === diff.path
+  const hasFileDraft = useMemo(
+    () => drafts.drafts.some(d => d.kind === 'file' && d.path === diff.path),
+    [drafts.drafts, diff.path],
+  )
 
   return (
     <div className="diff" ref={ref}>
       <div className="diff-head">
         <span className="path">{diff.path}</span>
         <span className="spacer" />
-        <button
-          type="button"
-          className="file-comment-add"
-          onClick={() => drafts.openFileComposer(diff.path)}
-          disabled={fileComposerOpen}
-          title="Add a file-level comment"
-        >
-          + Comment on file
-        </button>
+        {!hasFileDraft && !fileComposerOpen ? (
+          <button
+            type="button"
+            className="file-comment-add"
+            onClick={() => drafts.openFileComposer(diff.path)}
+            title="Add a file-level comment"
+          >
+            + Comment on file
+          </button>
+        ) : null}
       </div>
+      <FileLevelComments path={diff.path} />
       {fileComposerOpen ? <FileCommentComposer path={diff.path} /> : null}
       <div className="diff-body">
         <PatchDiff<AnnotationMeta>

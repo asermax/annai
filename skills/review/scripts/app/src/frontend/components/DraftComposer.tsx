@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import type { Anchor } from '../state/drafts.tsx'
 import { useDrafts } from '../state/drafts.tsx'
@@ -19,6 +19,11 @@ export const DraftComposer = ({ anchor }: Props) => {
   const [body, setBody] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Explicit focus on mount — React's autoFocus prop can be lost when the
+  // composer is mounted inside @pierre/diffs's annotation slot.
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  useEffect(() => { textareaRef.current?.focus() }, [])
 
   const save = async (): Promise<void> => {
     const trimmed = body.trim()
@@ -54,11 +59,11 @@ export const DraftComposer = ({ anchor }: Props) => {
         <span className="ref">{formatRange(anchor)}</span>
       </div>
       <textarea
+        ref={textareaRef}
         value={body}
         onChange={e => setBody(e.target.value)}
         onKeyDown={onSubmitKey(() => { void save() })}
         placeholder="Leave a comment…"
-        autoFocus
         rows={4}
         disabled={saving}
       />

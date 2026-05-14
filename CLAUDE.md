@@ -11,10 +11,10 @@ the full runtime design lives in [docs/annai-architecture.md](docs/annai-archite
 HTML prototypes (`docs/prototype-v0?.html`) show the target visual shape —
 v04 is the latest.
 
-## Current scope (v0.3.3)
+## Current scope (v0.3.4)
 
 v0.3.x builds on v0.2's drafts + submit flow. v0.3.1 fixed a blank-page
-bug and shipped surface-authoring CLI; v0.3.2–v0.3.3 are UX polish on
+bug and shipped surface-authoring CLI; v0.3.2–v0.3.4 are UX polish on
 the rendered surface.
 
 **Bug fix (v0.3.1):** the `@pierre/diffs` v1.1.22 `InteractionManager`
@@ -246,6 +246,11 @@ The agent never speaks HTTP — only via `annai.sh` subcommands.
   `SelectedLineRange` it provides — if you need to restyle the
   default gutter button, target the library's class in CSS rather
   than reintroducing the render prop.
+- **Version pill is auto-derived.** The `v<x.y.z>` pill in the top
+  nav reads from a `__ANNAI_VERSION__` global injected at build time
+  by `vite.config.ts` / `vitest.config.ts` (both read
+  `.claude-plugin/plugin.json`). Bumping `plugin.json` is the only
+  thing needed — never hardcode the version in JSX.
 
 ## Dogfood targets
 

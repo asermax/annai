@@ -2,7 +2,6 @@ import { marked } from 'marked'
 import type { Group as GroupType } from '../../shared/surface.ts'
 import { ReviewRow } from './ReviewRow.tsx'
 import { MermaidDiagram } from './MermaidDiagram.tsx'
-import { FileLevelComments } from './FileLevelComments.tsx'
 
 interface Props {
   group: GroupType
@@ -31,7 +30,6 @@ export const Group = ({ group }: Props) => {
 
       {group.diffs.map(diff => (
         <div key={diff.id} className="diff-block">
-          <FileLevelComments path={diff.path} />
           <ReviewRow diff={diff} />
         </div>
       ))}

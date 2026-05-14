@@ -19,7 +19,7 @@ export const SurfacePage = ({ surface }: Props) => {
     <>
       <nav className="top">
         <span className="brand">Annai</span>
-        <span className="pill">v0.2 · draft + submit</span>
+        <span className="pill">v{__ANNAI_VERSION__}</span>
         <span className="pill mono">{surface.pr.title.slice(0, 60)}{surface.pr.title.length > 60 ? '…' : ''} #{surface.pr.number}</span>
         <span className="spacer" />
         <SubmitBar />
@@ -32,6 +32,20 @@ export const SurfacePage = ({ surface }: Props) => {
         <div className="container">
           <PRHeader pr={surface.pr} tldr={surface.tldr} />
 
+          {surface.reviewPrompts != null && surface.reviewPrompts.length > 0 ? (
+            <aside className="review-prompts-alert">
+              <div className="label">Review prompts · keep in mind as you read</div>
+              <ul>
+                {surface.reviewPrompts.map((prompt, idx) => (
+                  <li
+                    key={idx}
+                    dangerouslySetInnerHTML={{ __html: marked.parseInline(prompt, { async: false }) as string }}
+                  />
+                ))}
+              </ul>
+            </aside>
+          ) : null}
+
           {surface.diagrams != null && surface.diagrams.length > 0 ? (
             <section className="group">
               <header className="group-head">
@@ -42,23 +56,6 @@ export const SurfacePage = ({ surface }: Props) => {
           ) : null}
 
           {surface.groups.map(group => <Group key={group.id} group={group} />)}
-
-          {surface.reviewPrompts != null && surface.reviewPrompts.length > 0 ? (
-            <section className="group">
-              <header className="group-head">
-                <div className="label">Review prompts</div>
-                <h2>Things to keep in mind as you read</h2>
-              </header>
-              <ul className="review-prompts">
-                {surface.reviewPrompts.map((prompt, idx) => (
-                  <li
-                    key={idx}
-                    dangerouslySetInnerHTML={{ __html: marked.parseInline(prompt, { async: false }) as string }}
-                  />
-                ))}
-              </ul>
-            </section>
-          ) : null}
         </div>
       </div>
 
