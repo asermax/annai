@@ -647,6 +647,40 @@ These don't change the architecture shape — they're fillable as we build:
   - **Performance**: large PRs can have hundreds of threads —
      fetch once at session start, cache in `session.json`, refresh
      on demand rather than on every render.
+- **Agent fact-checks reviewer drafts**: when the reviewer writes a
+  draft comment, route it (with the surrounding diff + the surface's
+  base context) through the agent to assess whether the claim holds
+  up. Three progressive stages — each shippable on its own and each
+  raising the agent's role:
+  1. **Assessment badge**: on save / debounce, the daemon fires an
+     event the agent picks up (similar shape to `agent-asked`), the
+     agent returns a short verdict (e.g. `valid` /
+     `needs-evidence` / `contradicts-diff` plus a one-line
+     rationale), and `DraftDisplay` renders a small badge next to
+     the draft body. Cheapest version of the idea — zero workflow
+     change, just a passive signal the reviewer can ignore or take
+     seriously. Open: do we re-check on every edit, or only on
+     explicit "ask agent to check"? Probably the latter to avoid
+     burning tokens on in-flight typing.
+  2. **Agent talkback on the draft**: the badge becomes an entry
+     point into a thread on the draft itself — agent can push
+     back ("the line you're referencing isn't actually changed in
+     this hunk"), suggest rewordings, or ask the reviewer for the
+     missing piece of context. Composes directly with the
+     ask-agent threading work deferred to v0.3 — the same
+     thread-state model and Monitor-driven round-trip handles
+     it, just attached to a `Draft` instead of an `Annotation`.
+  3. **Inject context as hidden footer on submit**: on submission,
+     append the agent's verdict + supporting context (the diff
+     range it considered, the surface annotations it pulled in)
+     to the comment body wrapped in `<!-- … -->` so it's invisible
+     to humans but readable by downstream coding agents. Composes
+     with the hidden-marker / `ANNAI_COMMENT_FOOTER` plumbing
+     above — same emit-on-submit path, separate marker namespace
+     (e.g. `<!-- annai:context … -->` vs. the user-supplied
+     footer). Cap size aggressively; the goal is "enough for the
+     next agent to make sense of the comment without re-running
+     the review," not a full transcript.
 
 ### Resolved
 
