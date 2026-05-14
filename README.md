@@ -18,7 +18,7 @@ explains the *why* alongside the *what* — in the order that makes sense.
 Read the long form in [`docs/code-review-surface.md`](./docs/code-review-surface.md);
 the runtime design lives in [`docs/annai-architecture.md`](./docs/annai-architecture.md).
 
-## Status — v0.1 (read-only)
+## Status — v0.2 (drafts → submit)
 
 What works:
 
@@ -26,16 +26,23 @@ What works:
   from a PR + arbitrary context.
 - A local daemon serves a React frontend (diff rendering via
   `@pierre/diffs`, diagrams via `mermaid`).
-- All the daemon scaffolding for the live interactive flow — unix-socket
-  IPC, typed event bus with watch filter, atomic state checkpoints — is
-  already wired, so v0.2 fills in handlers rather than rewriting plumbing.
+- **Drafting comments** inline on a line, on a multi-line range, on a
+  whole file, or as a top-level PR body. Agent suggestions can be
+  accepted as drafts or dismissed.
+- **Decision picker** — Approve or Comment — with a third action,
+  Dismiss session, that closes without sending. Every action opens a
+  confirmation modal that previews the comments grouped by file.
+- **Single-shot GitHub submission** via `gh api graphql`: one
+  `addPullRequestReview` (with line/range threads), one
+  `addPullRequestReviewThread` per file-level draft (`subjectType: FILE`),
+  one `submitPullRequestReview` to finalise. The reviewer never sees
+  comments arrive on the PR one at a time.
 
-Not yet:
+Not yet (v0.3):
 
-- Drafting comments, asking the agent questions inline, submitting the
-  review back to GitHub. The `watch`, `reply`, and `result` CLI
-  subcommands exist as stubs that exit with
-  `"not yet implemented in v0.1"`.
+- **Ask-agent threads** — inline "ask the agent" interaction from the
+  browser, with the agent replying via `annai.sh reply`. The `reply` CLI
+  subcommand is still a stub.
 
 ## Install
 
@@ -65,25 +72,43 @@ The skill will:
 3. Generate `surface.json` grounded in the diff and the supplied
    context.
 4. Start the local server, open your browser, and tell you the URL.
-5. Stop the daemon when you say you're done.
+5. Watch for the events the reviewer triggers in the browser: drafting
+   line / range / file / PR comments, accepting or dismissing
+   suggestions, picking Approve or Comment and confirming.
+6. On submit, run `annai.sh submit` — a single GraphQL submission to
+   GitHub that lands the whole review with one notification — and
+   report the resulting review URL.
+7. On Dismiss session, close cleanly with no GitHub call.
 
 ## How it works
 
 ```
 agent → annai.sh start ──► detached daemon ──► browser at 127.0.0.1:<port>
                                 │
-                                ├── http: GET /api/surface
-                                ├── unix socket: command frames (status, stop)
-                                └── state: surface.json, state.json, events.log
+                                ├── http: GET /api/surface, /api/state
+                                │         POST/PATCH/DELETE /api/drafts
+                                │         PUT /api/pr-body
+                                │         POST /api/submit, /api/dismiss
+                                ├── unix socket: command frames (status, stop, result)
+                                │                + watch stream (line-delim events)
+                                └── state: surface.json, state.json, events.log, result.json
+
+agent → annai.sh watch    ──► subscribes to filtered events (review-submitted, …)
+agent → annai.sh result   ──► fetches result.json after review-submitted
+agent → annai.sh submit   ──► single gh api graphql submission to GitHub
+agent → annai.sh stop     ──► graceful shutdown
 ```
 
 - The agent never speaks HTTP — only `annai.sh` subcommands over a unix
-  socket.
+  socket. The browser is the only HTTP client.
 - The daemon binds 127.0.0.1 with an auto-picked port and writes its
   state to `$XDG_RUNTIME_DIR/annai/sessions/<id>/` (falling back to
   `${TMPDIR:-/tmp}/annai-$UID/...`).
 - Diffs in `surface.json` reproduce the actual PR verbatim. Annotations
   must be grounded in the diff or supplied context.
+- GitHub submission goes through GraphQL (not REST), because file-level
+  comments require GraphQL's `subjectType: FILE`. All comments land in
+  one review event regardless.
 
 ## Development
 

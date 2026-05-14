@@ -24,12 +24,14 @@ CLI surface, and skill responsibilities so implementation can start.
 | # | Decision | Choice |
 |---|---|---|
 | 1 | Scope | Plugin contains **both** the runtime (CLI + daemon + frontend) and the agent skill. The skill *generates* the surface JSON; the CLI/daemon *consumes* it and runs the interactive session. |
-| 2 | v1 interactivity | Design for the **full vision** — Monitor-streamed events for the actions the agent must react to, `annai reply` for "ask agent" threads. Cut corners later if needed. |
+| 2 | Slicing | The full vision splits into two slices: **v0.2** (this doc) = draft comments + decision + single-shot GitHub submission. **v0.3** = ask-agent threads (`agent-asked` event, `annai.sh reply`, inline thread UI). v0.2 ships the watch filter and event bus that v0.3 plugs into. |
 | 3 | Stack | **TypeScript** end-to-end. Frontend is **React + Vite**, diff rendering via **`@pierre/diffs`** (Apache-2.0). Tests via **vitest**. |
 | 4 | Event channel | `annai watch --session <id>` subcommand emitting **line-delimited JSON** on stdout. **Only events the agent must act on are emitted** — quiet by default so Monitor doesn't wake the agent on every browser keystroke. |
 | 5 | Entry script | A single `annai.sh` runs the node code directly (no separate compiled binary). Does first-run bootstrap (`npm install`) internally; subsequent runs short-circuit. |
 | 6 | Runtime state location | `$XDG_RUNTIME_DIR/annai/sessions/<id>/` (with `${TMPDIR:-/tmp}/annai-$UID/` fallback when `$XDG_RUNTIME_DIR` is unset). |
 | 7 | No `commands/` folder | The skill itself is invoked as `/annai:review`; no separate slash-command wrapper. |
+| 8 | GitHub submission API | **GraphQL** — `addPullRequestReview` (line/range threads + body) + `addPullRequestReviewThread` (one per file-level draft, `subjectType: FILE`) + `submitPullRequestReview`. REST `POST /pulls/{n}/reviews` is rejected because it doesn't support file-level comments. All mutations run from a single CLI invocation (`annai.sh submit`); one review event lands on the PR regardless. |
+| 9 | Decision set | Two decisions only: `approve` and `comment`. `request-changes` is intentionally excluded. A third UI action — Dismiss session — closes the browser session without submitting (routes through `session-aborted`, not `review-submitted`). |
 
 ---
 
@@ -126,7 +128,7 @@ sequenceDiagram
 
 ---
 
-## "Ask agent" thread sequence
+## "Ask agent" thread sequence *(v0.3 — stubbed in v0.2)*
 
 ```mermaid
 sequenceDiagram
@@ -233,9 +235,10 @@ via `tsc` into `dist/`. One package, two build pipelines, one shipped artifact.
 |---|---|---|
 | `annai.sh start --surface <path> --session <id> [--port auto] [--repo <path>]` | Spawn the daemon (detached), load the surface JSON, open the browser. Prints `{sessionId, url}` JSON on stdout and exits. | Agent (once at session start) |
 | `annai.sh watch --session <id>` | Connect to the daemon's socket; print **only events the agent must react to** as line-delimited JSON. Long-running. **Monitor tails this.** | Agent (one foreground process per session) |
-| `annai.sh reply --session <id> --thread <thread-id> <message>` | Push an agent reply into an "ask agent" thread. Daemon broadcasts to the browser. | Agent (on `agent-asked`) |
+| `annai.sh reply --session <id> --thread <thread-id> <message>` *(v0.3)* | Push an agent reply into an "ask agent" thread. Daemon broadcasts to the browser. **Stubbed in v0.2.** | Agent (on `agent-asked`) |
 | `annai.sh status --session <id>` | One-shot: dump current session state (drafts, threads, decision) as JSON. Useful for recovery / debugging. | Agent (on demand) |
 | `annai.sh result --session <id>` | Dump the final result payload. Errors if review hasn't been submitted. | Agent (after `review-submitted`) |
+| `annai.sh submit --session <id>` | Fetch the result, run the three GraphQL mutations against GitHub, print the resulting review URL. | Agent (after `review-submitted`) |
 | `annai.sh stop --session <id>` | Graceful daemon shutdown. | Agent (cleanup) |
 | `annai.sh sessions` | List active and recent sessions. | Agent or user |
 
@@ -274,9 +277,15 @@ stdout: only events the agent must react to are emitted, to keep Monitor quiet.
 ### Not emitted on `watch` (state-only; visible via `annai.sh status`)
 
 `session-started`, `comment-drafted`, `comment-edited`, `comment-dismissed`,
-`suggestion-accepted`, `agent-thread-closed`, `decision-set`. These update
-`state.json` and `events.log` and reach the browser over WebSocket, but the
-agent isn't pestered with them.
+`suggestion-accepted` *(v0.3)*, `agent-thread-closed` *(v0.3)*,
+`decision-set`. These update `state.json` and `events.log` (and v0.3 will
+push them to the browser over WebSocket), but the agent isn't pestered
+with them.
+
+**v0.2 firing status:** `session-started`, `comment-drafted`,
+`comment-edited`, `comment-dismissed`, and `decision-set` start firing in
+v0.2 — still suppressed from `watch`. `suggestion-accepted` and
+`agent-thread-closed` wait for v0.3.
 
 If the agent ever wants a snapshot (e.g., consistency check across drafts), it
 runs `annai.sh status --session <id>` on demand. A `--verbose` flag on `watch`
@@ -314,18 +323,29 @@ order:
 5. **Subscribe**: `Monitor` `${CLAUDE_SKILL_DIR}/scripts/annai.sh watch
    --session <id>`. Only react-worthy events arrive here.
 6. **React**:
-   - `agent-asked` → read question + context, formulate answer, run
-     `annai.sh reply --session <id> --thread <threadId> <answer>`.
    - `review-submitted` → stop watching, proceed to step 7.
-   - `session-aborted` → cleanup, report to user.
-   - `daemon-error` → report to user, attempt `annai.sh status` for diagnostic.
+   - `session-aborted` → cleanup, report to user as a cancellation (the
+     reviewer either closed the browser or hit Dismiss session; no
+     submission to make). Skip steps 7–8.
+   - `daemon-error` → report to user, attempt `annai.sh status` for
+     diagnostic.
+   - `agent-asked` → *(v0.3)* read question + context, formulate answer,
+     run `annai.sh reply --session <id> --thread <threadId> <answer>`. In
+     v0.2 this event does not fire — the ask-agent flow is stubbed.
 7. **Collect the result**: `annai.sh result --session <id>` → JSON.
-8. **Submit via gh**: use the GitHub REST API endpoint
-   `POST /repos/{owner}/{repo}/pulls/{n}/reviews` (callable via `gh api`)
-   because it accepts batched inline `comments[]` plus a top-level body and
-   decision in one call. The skill documents the mapping from Annai's
-   `result.json` to this payload.
-9. **Cleanup**: `annai.sh stop --session <id>`.
+   Useful for logging / debugging; not strictly required (step 8 fetches
+   it internally).
+8. **Submit via gh**: run `annai.sh submit --session <id>`. The
+   subcommand fetches `result.json` via IPC, queries `gh api graphql` for
+   the PR node id + head commit OID, then runs three mutations in
+   sequence: `addPullRequestReview` with the line/range threads,
+   `addPullRequestReviewThread` (`subjectType: FILE`) for each
+   file-level draft, and `submitPullRequestReview` with the matching
+   event (`APPROVE` or `COMMENT`). Prints `{sessionId, reviewUrl,
+   state, decision, commentCount}` to stdout — the skill reports the URL
+   to the user.
+9. **Cleanup**: `annai.sh stop --session <id>` (only after a successful
+   submit; on `session-aborted` the daemon has already exited).
 
 The skill also includes an annotated `surface-example.json` so the agent has a
 concrete shape to mimic, not just a JSON Schema.
@@ -472,12 +492,26 @@ is a plain `node` exec.
 
 These don't change the architecture shape — they're fillable as we build:
 
-- **gh review submission mapping**: confirmed shape is `POST /repos/.../pulls/{n}/reviews` via `gh api`. Exact body builder lives in the skill.
-- **Frontend state library**: Zustand vs Jotai vs plain React context. Pick during impl based on complexity of the draft/thread state.
-- **Watch reconnect semantics**: should `watch` replay events since last offset on reconnect (using `events.log`), or only emit from now? Probably "since offset" for resilience.
-- **Authentication / multi-user**: out of scope for v1; daemon binds to `127.0.0.1`. Sharing comes later (plannotator-style encrypted-share link is a natural extension).
-- **Plugin marketplace publication**: target the official marketplace once stable and dogfooded on Tachikoma + Filadd PRs.
-- **Multiple concurrent sessions per host**: state files are per-session, so technically supported. No tests for it in v1.
+- **Frontend state library**: ~~Zustand vs Jotai vs plain React context.~~
+  Settled in v0.2: plain React context + `useReducer` inside
+  `src/frontend/state/drafts.tsx`. Adding Zustand or Jotai would be
+  over-engineering for the size of state we have.
+- **Watch reconnect semantics**: should `watch` replay events since last
+  offset on reconnect (using `events.log`), or only emit from now? Probably
+  "since offset" for resilience. Deferred — v0.2 emits from now.
+- **Authentication / multi-user**: out of scope for v1; daemon binds to
+  `127.0.0.1`. Sharing comes later (plannotator-style encrypted-share link
+  is a natural extension).
+- **Plugin marketplace publication**: target the official marketplace once
+  stable and dogfooded on Tachikoma + Filadd PRs.
+- **Multiple concurrent sessions per host**: state files are per-session,
+  so technically supported. No tests for it in v1.
+
+### Resolved
+
+- **gh review submission mapping**: GraphQL, not REST. See Decision 8
+  above. `cli/submit.ts` is the implementation; `daemon/submission.ts`
+  holds the pure builders.
 
 ---
 

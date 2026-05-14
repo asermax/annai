@@ -4,10 +4,10 @@ import { fileURLToPath } from 'node:url'
 
 import { sessionPaths } from '../shared/paths.ts'
 import { EventBus } from './events.ts'
-import { startIpcServer } from './ipc.ts'
+import { startIpcServer, encodeFrame } from './ipc.ts'
 import type { CommandPayload, CommandResponse } from './ipc.ts'
 import { startHttpServer } from './http.ts'
-import { Session, loadSurface, writeStateAtomic, appendEventLog } from './session.ts'
+import { Session, loadSurface, appendEventLog } from './session.ts'
 import type { AnnaiEvent } from '../shared/events.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -32,7 +32,7 @@ const main = async (): Promise<void> => {
   const paths = sessionPaths(sessionId)
 
   const surface = loadSurface(paths.surface)
-  const session = new Session({ sessionId, surface })
+  const session = new Session({ sessionId, surface, statePath: paths.state })
 
   const bus = new EventBus()
 
@@ -40,26 +40,35 @@ const main = async (): Promise<void> => {
     appendEventLog(paths.events, event)
   })
 
+  // pre-empty stale socket file (from a crashed prior session)
+  if (existsSync(paths.sock)) unlinkSync(paths.sock)
+
+  let shutdownPromise: Promise<void> | null = null
+  const shutdown = (reason: string): Promise<void> => {
+    if (shutdownPromise != null) return shutdownPromise
+
+    shutdownPromise = (async () => {
+      const ev: AnnaiEvent = { kind: 'session-aborted', at: new Date().toISOString(), reason }
+      try { bus.emit(ev) } catch { /* best effort */ }
+      try { httpServer.close() } catch { /* */ }
+      try { ipcServer.close() } catch { /* */ }
+      try { if (existsSync(paths.sock)) unlinkSync(paths.sock) } catch { /* */ }
+      // give pending IPC writes a tick to flush before exit
+      setImmediate(() => process.exit(0))
+    })()
+
+    return shutdownPromise
+  }
+
   // start http first so we know the port to publish in state.json
   const { server: httpServer, port } = await startHttpServer({
     frontendDir: FRONTEND_DIR,
     surface,
+    session,
+    bus,
+    shutdown: reason => { void shutdown(reason) },
   })
   session.setPort(port)
-  writeStateAtomic(paths.state, session.snapshot())
-
-  // pre-empty stale socket file (from a crashed prior session)
-  if (existsSync(paths.sock)) unlinkSync(paths.sock)
-
-  const shutdown = async (reason: string): Promise<void> => {
-    const ev: AnnaiEvent = { kind: 'session-aborted', at: new Date().toISOString(), reason }
-    try { bus.emit(ev) } catch { /* best effort */ }
-    try { httpServer.close() } catch { /* */ }
-    try { ipcServer.close() } catch { /* */ }
-    try { if (existsSync(paths.sock)) unlinkSync(paths.sock) } catch { /* */ }
-    // session dir is left intact for `annai sessions` to mark stale; `stop` removes it.
-    process.exit(0)
-  }
 
   const ipcServer = await startIpcServer({
     socketPath: paths.sock,
@@ -70,22 +79,31 @@ const main = async (): Promise<void> => {
         case 'status':
           return { ok: true, data: session.snapshot() }
         case 'stop':
-          // schedule shutdown but reply first
-          setImmediate(() => { shutdown('stop-command').catch(() => process.exit(1)) })
+          setImmediate(() => { void shutdown('stop-command') })
           return { ok: true, data: { stopping: true } }
-        case 'reply':
         case 'result':
-          return { ok: false, error: `command "${cmd.op}" not implemented in v0.1` }
+          try {
+            return { ok: true, data: session.buildResult() }
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err)
+            return { ok: false, error: message }
+          }
+        case 'reply':
+          return { ok: false, error: 'command "reply" deferred to v0.3 (ask-agent threads)' }
         default: {
           const exhaustive: never = cmd
           return { ok: false, error: `unknown command: ${JSON.stringify(exhaustive)}` }
         }
       }
     },
-    onWatch: () => {
-      // v0.1: the subscription is wired but no events flow to the agent.
-      // v0.2 replaces the no-op forwarder with `socket.write(encodeFrame(event))`.
-      return bus.subscribe(() => { /* no-op forwarder for v0.1 */ }, { watchFilter: true })
+    onWatch: socket => {
+      return bus.subscribe(event => {
+        try {
+          socket.write(encodeFrame(event))
+        } catch {
+          // socket closed / errored — fan-out will clean up via socket close handler
+        }
+      }, { watchFilter: true })
     },
   })
 

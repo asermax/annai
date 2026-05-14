@@ -4,6 +4,10 @@ import { OutlineNav } from './OutlineNav.tsx'
 import { Group } from './Group.tsx'
 import { MermaidDiagram } from './MermaidDiagram.tsx'
 import { ThemeToggle } from './ThemeToggle.tsx'
+import { SubmitBar } from './SubmitBar.tsx'
+import { PRLevelComment } from './PRLevelComment.tsx'
+import { ConfirmReviewModal } from './ConfirmReviewModal.tsx'
+import { DismissSessionModal } from './DismissSessionModal.tsx'
 
 interface Props {
   surface: Surface
@@ -14,9 +18,10 @@ export const SurfacePage = ({ surface }: Props) => {
     <>
       <nav className="top">
         <span className="brand">Annai</span>
-        <span className="pill">v0.1 · read-only</span>
+        <span className="pill">v0.2 · draft + submit</span>
         <span className="pill mono">{surface.pr.title.slice(0, 60)}{surface.pr.title.length > 60 ? '…' : ''} #{surface.pr.number}</span>
         <span className="spacer" />
+        <SubmitBar />
         <ThemeToggle />
       </nav>
 
@@ -48,8 +53,13 @@ export const SurfacePage = ({ surface }: Props) => {
               </ul>
             </section>
           ) : null}
+
+          <PRLevelComment />
         </div>
       </div>
+
+      <ConfirmReviewModal />
+      <DismissSessionModal />
     </>
   )
 }

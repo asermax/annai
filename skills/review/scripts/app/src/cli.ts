@@ -5,6 +5,7 @@ import { runSessions } from './cli/sessions.ts'
 import { runWatch } from './cli/watch.ts'
 import { runReply } from './cli/reply.ts'
 import { runResult } from './cli/result.ts'
+import { runSubmit } from './cli/submit.ts'
 
 const USAGE = `usage: annai.sh <command> [args]
 
@@ -13,9 +14,10 @@ commands:
   stop     --session <id>
   status   --session <id>
   sessions
-  watch    (v0.1: not yet implemented)
-  reply    (v0.1: not yet implemented)
-  result   (v0.1: not yet implemented)
+  watch    --session <id>          (stream filtered events to stdout)
+  result   --session <id>          (dump final result.json after submission)
+  submit   --session <id>          (push review to GitHub via gh GraphQL)
+  reply    (deferred to v0.3 — ask-agent threads)
 `
 
 type Handler = (argv: string[]) => Promise<void>
@@ -28,6 +30,7 @@ const HANDLERS: Record<string, Handler> = {
   watch: runWatch,
   reply: runReply,
   result: runResult,
+  submit: runSubmit,
 }
 
 const main = async (): Promise<void> => {

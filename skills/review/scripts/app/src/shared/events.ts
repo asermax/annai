@@ -53,7 +53,7 @@ export interface AgentAskedEvent extends EventBase {
 
 export interface ReviewSubmittedEvent extends EventBase {
   kind: 'review-submitted'
-  decision: 'approve' | 'comment' | 'request-changes'
+  decision: 'approve' | 'comment'
   commentCount: number
 }
 

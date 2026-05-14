@@ -10,6 +10,8 @@ tags: [skill-idea, code-review, tool]
 
 **Name:** Annai (案内 — guidance, showing the way). Chosen because the core action is guiding the reviewer through the code in the right order to comprehend it. Reserved for when the idea graduates into a real implementation; this idea note keeps the descriptive `code-review-surface` slug.
 
+> **Implementation status:** The interactive design described below ships in two slices. v0.2 implements the read-only surface plus drafting line / range / file / PR-level comments and a single-shot GitHub submission via GraphQL. Ask-agent threads (the "Ask agent" interaction in prototype v04) are deferred to v0.3. The runtime design lives in [`annai-architecture.md`](./annai-architecture.md).
+
 ## The Itch
 
 Getting a lot of code reviews where I lack context on the feature being changed. Whether it's agent PRs from Zenki (where context lives in Katachi specs/designs), or PRs from coworkers (where context lives in Notion, Jira, Slack threads, or just in someone's head), the pattern is the same: I spend most of the review time manually piecing together the "why" before I can even start judging the "what". That assembly work is the bottleneck, and it's the same bottleneck regardless of where the context originally lives.

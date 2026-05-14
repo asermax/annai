@@ -1,25 +1,27 @@
 /**
- * Final payload shape written to result.json when the reviewer submits.
+ * Final payload written to result.json when the reviewer submits.
  *
- * Declared for v0.2+. The v0.1 daemon never writes result.json — the
- * `result` CLI subcommand exits with "not yet implemented".
+ * `decision` is narrowed to approve | comment (no request-changes) — see
+ * docs/annai-architecture.md §"Decision UX". Dismiss is not a decision; it
+ * routes through session-aborted, not result.json.
  */
+
+import { z } from 'zod'
+import { draftSchema, type Draft } from './drafts.ts'
 
 export const REVIEW_DECISIONS = {
   approve: 'approve',
   comment: 'comment',
-  'request-changes': 'request-changes',
 } as const
 export type ReviewDecision = typeof REVIEW_DECISIONS[keyof typeof REVIEW_DECISIONS]
 
-export interface ResultComment {
-  path: string
-  line: number
-  body: string
-}
+export type ResultComment = Draft
 
-export interface Result {
-  decision: ReviewDecision
-  body: string
-  comments: ResultComment[]
-}
+export const resultSchema = z.object({
+  decision: z.enum([REVIEW_DECISIONS.approve, REVIEW_DECISIONS.comment]),
+  body: z.string(),
+  comments: z.array(draftSchema),
+  commitId: z.string().optional(),
+})
+
+export type Result = z.infer<typeof resultSchema>

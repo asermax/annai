@@ -11,20 +11,35 @@ the full runtime design lives in [docs/annai-architecture.md](docs/annai-archite
 HTML prototypes (`docs/prototype-v0?.html`) show the target visual shape —
 v04 is the latest.
 
-## Current scope (v0.1)
+## Current scope (v0.2)
 
-v0.1 is **read-only**:
+v0.2 adds **draft comments + single-shot GitHub review submission** on top
+of v0.1's read-only surface:
 
-- The skill generates `surface.json`.
-- The daemon serves the React frontend and `GET /api/surface`.
-- The reviewer reads. They cannot draft comments, ask the agent questions,
-  or submit a review back to GitHub from inside Annai.
+- The skill generates `surface.json` (unchanged from v0.1).
+- The daemon serves the React frontend, exposes `GET /api/surface`, and
+  hosts the draft API: `GET /api/state`, `POST/PATCH/DELETE /api/drafts`,
+  `PUT /api/pr-body`, `POST /api/submit`, `POST /api/dismiss`.
+- The reviewer can draft inline comments on a line, a range, on a whole
+  file, or as a top-level PR body. Agent `Suggestion` items render as
+  accept-as-draft / dismiss candidates inline.
+- Top-nav has three actions — **Approve**, **Comment**, **Dismiss
+  session** — each opening a confirmation modal that previews what's
+  about to happen (file-grouped draft list + PR body, with empty-state
+  warnings).
+- On submit, the daemon writes `result.json` and emits `review-submitted`.
+  The agent's `Monitor` of `annai.sh watch` sees the event, then runs
+  `annai.sh submit`, which makes a single atomic GraphQL submission to
+  GitHub: one `addPullRequestReview` (line + range threads), one
+  `addPullRequestReviewThread` per file-level draft (`subjectType: FILE`),
+  one `submitPullRequestReview` to finalise with `APPROVE` or `COMMENT`.
+- On dismiss, the daemon emits `session-aborted` and shuts down — no
+  GitHub call.
 
-The full daemon scaffolding (unix-socket IPC, event bus with watch filter,
-typed events) is already in place — the interactive subcommands
-(`watch`, `reply`, `result`) exist as stubs that exit with `"not yet
-implemented in v0.1"`. v0.2 fills those in. **If you're about to touch any
-of the interactive flows, re-read `docs/annai-architecture.md` first.**
+The interactive subcommands `watch`, `result`, and `submit` are real.
+`reply` (ask-agent threads) is still stubbed and deferred to v0.3.
+**If you're about to touch the ask-agent flow, re-read
+`docs/annai-architecture.md` first.**
 
 ## Layout
 
@@ -38,13 +53,24 @@ of the interactive flows, re-read `docs/annai-architecture.md` first.**
   `exec node` the built CLI.
 - `skills/review/scripts/app/` — node + react project.
   - `src/cli.ts` + `src/cli/*` — subcommand router and handlers.
+    `cli/submit.ts` builds the GraphQL bodies and shells out to
+    `gh api graphql`.
   - `src/daemon/*` — daemon process: `daemon.ts` (entry), `session.ts`
-    (state + atomic checkpoint), `ipc.ts` (length-prefixed JSON over unix
-    socket), `events.ts` (typed event bus + watch filter), `http.ts` (zero-
-    dep static server + `/api/surface`).
+    (state + atomic checkpoint + draft mutators + `buildResult`), `ipc.ts`
+    (length-prefixed JSON over unix socket), `events.ts` (typed event bus
+    + watch filter), `http.ts` (zero-dep static server + `/api/surface` +
+    draft API + submit/dismiss), `submission.ts` (pure GraphQL request
+    builders).
   - `src/shared/*` — types and zod schemas shared between cli, daemon, and
-    frontend.
+    frontend. `drafts.ts` defines the `Draft` discriminated union (line /
+    range / file) and the wire shape for the draft API; `result.ts`
+    defines `Result` written to result.json; `session-state.ts` is the
+    `GET /api/state` shape.
   - `src/frontend/*` — React 19 + Vite app, served at `/` by the daemon.
+    `state/drafts.tsx` is the central React context (reducer + API
+    wrappers). `components/{DraftComposer,DraftDisplay,FileLevelComments,
+    PRLevelComment,SubmitBar,ConfirmReviewModal,DismissSessionModal}.tsx`
+    are the v0.2 interaction surface.
   - `dist/` — gitignored; built by `annai.sh` on first run.
   - `tests/{unit,frontend}/` — vitest.
 
@@ -104,10 +130,8 @@ The agent never speaks HTTP — only via `annai.sh` subcommands.
 
 ## Intentionally deferred
 
-- Interactive CLI subcommands (`watch`, `reply`, `result`) and the
-  ask-agent / draft-comment / submit-review flows they drive.
-- `gh pr review` submission step (mapping `result.json` to
-  `POST /repos/.../pulls/{n}/reviews`).
+- **Ask-agent threads** (`agent-asked` event, `annai.sh reply`, inline
+  thread UI). Deferred to v0.3.
 - Multi-session UX polish, watch reconnect/replay from `events.log` offsets,
   Claude Code marketplace publication.
 

@@ -15,17 +15,24 @@ prepare a surface for a code review. Typical phrasings: "review this PR",
 "prep PR #N for review", "help me review <url>", or an explicit `/annai:review`
 invocation.
 
-## v0.1 scope (read this before you start)
+## v0.2 scope (read this before you start)
 
-This iteration is **read-only**: you generate a `surface.json`, the daemon
-serves it in a browser, and that's it. The interactive flow — ask-agent
-threads, draft comments, submitting the review via `gh` — is **not yet
-implemented**. Do not promise the user that their drafts or "ask agent"
-clicks will reach the PR; tell them v0.1 is for reading. Adding those flows
-is tracked in `docs/annai-architecture.md`.
+This iteration adds **draft comments + single-shot review submission** on
+top of v0.1's read-only surface:
 
-CLI subcommands `watch`, `reply`, and `result` exist but exit with
-`"not yet implemented in v0.1"` — don't call them.
+- The reviewer can draft inline comments on a line, a range, a whole
+  file, or as a top-level PR body. They can accept or dismiss the
+  agent's `Suggestion` items.
+- They pick **Approve** or **Comment** (no Request Changes) and confirm
+  in a modal. A third action — **Dismiss session** — closes the daemon
+  without sending anything.
+- You watch for `review-submitted` (or `session-aborted` on dismiss /
+  browser close), then run `annai.sh submit` to atomically push the
+  whole review to GitHub via three GraphQL mutations.
+
+**Still stubbed (v0.3):** ask-agent threads (`agent-asked` event,
+`annai.sh reply`, inline agent replies in the browser). Don't promise the
+user they can ask the agent questions inline yet.
 
 ## Procedure
 
@@ -65,21 +72,54 @@ Hard constraints:
 - **All annotations must be grounded** in the diff or the supplied context.
   No speculation. If the doc says X and the code does Y, that's a
   `discrepancy` annotation — surface it explicitly.
+- **Every annotation must teach.** Density is fine — narrative isn't.
+  Don't restate what the diff already shows or what an attentive reader
+  would catch in passing. Each annotation should answer one of: *why does
+  this exist*, *what's easy to miss*, *what should the reviewer verify*,
+  *what's inconsistent*. If you can't say which, cut it.
 - **Order for comprehension.** Group `kind` is one of `base-context`,
   `entry-point`, `supporting`. Put base-context groups first **only when
   load-bearing** (new abstractions, data models). Then entry points (HTTP
   handlers, webhooks, background triggers, CLI commands — the points a
   user or system *triggers*, not where code is *wired up*). Then supporting
   code.
-- **Annotation kinds**: `pattern` (a recurring shape worth naming), `note`
-  (explanation of what the code is/does), `question` (something to ask the
-  author or yourself), `surface-check` (look here for X), `discrepancy`
-  (doc-vs-code mismatch).
+- **Annotation kinds.** Each kind names a different *job* the annotation
+  does for the reviewer. Pick by intent, not by shape.
+  - `pattern` — name a recurring shape so the reviewer can match it once
+    and stop re-reading.
+    - *Good*: "Default `'immediate'` preserves existing behaviour — every
+      existing row reads this value after the migration, which is what
+      every call site expects when the column is absent."
+    - *Bad*: "This adds a new column."
+  - `note` — the **why**: purpose, constraint, hidden invariant, or
+    non-obvious consequence. Never a description of *what* the code does.
+    - *Good*: "Branch maps 1:1 to the migration's CHECK constraint — a
+      fourth mode would need this switch and the constraint to move in
+      lockstep."
+    - *Bad*: "Calls the API and parses the response."
+  - `question` — something the *reviewer* should ask the author (or
+    themselves) before approving. Not a rhetorical aside.
+    - *Good*: "The `deferred` branch returns 202 without enqueueing — who
+      picks these up later? If nothing does, it's a black hole."
+    - *Bad*: "What does this function do?"
+  - `surface-check` — a verification target: "look here for X."
+    - *Good*: "`runTransition` and `enqueueTransition` are newly exported
+      — check whether anything actually consumes the export or it can
+      drop."
+    - *Bad*: "Check this code."
+  - `discrepancy` — a doc-vs-code mismatch you can name. The doc source
+    must be specified and the mismatch concrete.
+    - *Good*: "Scope doc (`docs/transition-scheduling.md`) describes the
+      body as `{ advance_at: ISO8601 }`, but the handler reads
+      `req.body?.scheduled_for`. One of them is wrong."
+    - *Bad*: "Doesn't match the docs."
 - **Suggestions vs annotations.** Annotations are for the reviewer's
   understanding (never sent to the PR). Suggestions are for things the
   reviewer might want to raise *on the PR* — phrased as proposed changes
   or questions for the author. Use `suggestionCode` when proposing a code
-  change.
+  change. **v0.2 UX:** suggestions render inline with "Accept as draft" and
+  "Dismiss" buttons; accepting promotes a suggestion into a real draft
+  comment that goes out with the review.
 - **Mermaid diagrams** where they aid understanding: ERD for new tables,
   sequence for API flows, state diagram for lifecycles, flowchart for
   branching logic. PR-level diagrams go on `surface.diagrams`; group-scoped
@@ -105,23 +145,69 @@ Pick a short session id (e.g. `review-<pr-number>` or a 6-char nonce).
 Bootstrap (`npm install`) runs on first invocation inside the script —
 don't pre-install. Capture `{sessionId, url}` from stdout.
 
-### 5. Report to the user
+### 5. Report to the user and start watching
 
-Tell them the URL and that v0.1 is read-only:
+Tell them the URL and how the flow ends:
 
 > Surface ready: <url>
 >
-> v0.1 is read-only — the page is for reading, not for queuing comments or
-> submitting back to the PR. When you're done, say so and I'll stop the
-> daemon.
+> Draft comments inline / per-file / at the PR level, then hit Approve or
+> Comment when you're ready, or Dismiss session if you want to bail. I'll
+> push the review to GitHub once you submit.
 
-### 6. Cleanup
-
-When the user signals they're done:
+Then run `annai.sh watch` under `Monitor` so the agent reacts to events
+without polling:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/annai.sh" stop --session "<session-id>"
+"${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/annai.sh" watch \
+  --session "<session-id>"
 ```
+
+`watch` is quiet until the reviewer acts. The line-delimited events it
+emits to stdout are the ones the agent must handle (everything else —
+`comment-drafted`, `comment-edited`, etc. — stays browser-side and never
+wakes the agent).
+
+### 6. React to events
+
+- `review-submitted` (`{ decision: "approve" | "comment", commentCount }`)
+  → go to step 7.
+- `session-aborted` (`{ reason }`) → report a clean cancellation to the
+  user. `reason: "dismissed-by-reviewer"` means the reviewer hit Dismiss
+  session; other reasons are browser-close / `stop` / signals. **Don't**
+  call `submit` — there's nothing to send. The daemon has already exited;
+  no `stop` needed.
+- `daemon-error` (`{ message }`) → report the failure to the user. If
+  possible, run `annai.sh status --session <id>` for diagnostics.
+
+### 7. Submit the review
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/annai.sh" submit \
+  --session "<session-id>"
+```
+
+`submit` fetches the result via IPC, queries the PR's node id + head
+commit OID via `gh api graphql`, runs `addPullRequestReview` (line + range
+threads + PR body), runs `addPullRequestReviewThread` once per file-level
+draft (`subjectType: FILE`), then `submitPullRequestReview` with the
+matching event. Output is a single JSON line:
+
+```json
+{"sessionId":"…","reviewUrl":"https://github.com/…/pull/…#pullrequestreview-…","state":"APPROVED","decision":"approve","commentCount":4}
+```
+
+Report the URL to the user.
+
+### 8. Cleanup
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/annai.sh" stop \
+  --session "<session-id>"
+```
+
+Skip this if the watch event was `session-aborted` — the daemon already
+shut down.
 
 ## References
 
