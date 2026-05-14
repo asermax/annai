@@ -5,7 +5,7 @@ a structured, ordered view of a pull request — base context first, then
 entry points, then supporting code — with typed side notes, inline
 suggestions, and mermaid diagrams. A local server renders it.
 
-![Annai v0.1 surface rendered from the bundled example](./docs/screenshots/surface-v0.1.png)
+![Annai review surface rendered from the bundled example](./docs/screenshots/surface-v0.3.png)
 
 ## Why
 
@@ -18,65 +18,46 @@ explains the *why* alongside the *what* — in the order that makes sense.
 Read the long form in [`docs/code-review-surface.md`](./docs/code-review-surface.md);
 the runtime design lives in [`docs/annai-architecture.md`](./docs/annai-architecture.md).
 
-## Status
+## Features
 
-**v0.3.1 — bug fix + authoring polish.** Building on v0.2's drafts +
-submit flow:
-
-- Fixes a `@pierre/diffs` gutter assertion that left the page blank as
-  soon as the surface contained any annotations. The library forbids
-  combining `onGutterUtilityClick` with `renderGutterUtility`; we now
-  keep only the imperative path (which is what the line/range draft
-  anchors need).
-- Surface authoring CLI: adds `*-update` verbs for groups,
-  annotations, suggestions, and diagrams; `set-tldr` and
-  `set-review-prompts`; `surface validate` (with `--strict`); and
-  `surface show` (overview / per-group / per-diff with new-file line
-  numbers — the introspection the agent needs to pick `--line-range`).
-- `surface scaffold --repo` accepts a local clone path **or** an
-  `OWNER/REPO` slug; the slug is resolved via `gh repo view` in the
-  directory when needed.
-- Every surface op now prints a one-line success summary, supports
-  `--json` for machine-readable output, `--quiet` for none, and
-  `--help` per-op. The first-run bootstrap pipes Vite/npm output to
-  a log file under `$XDG_STATE_HOME/annai/` so the agent sees only
-  one line on success.
-- Diagram authoring (`diagram-add` / `diagram-update`) parses the
-  source with the bundled mermaid renderer; `--skip-validate`
-  bypasses.
-- Client-side errors (window.onerror, unhandled rejection, React
-  error boundary) are captured by the frontend, POSTed to the daemon
-  at `/api/client-errors`, surfaced in `annai.sh status --session …`
-  as `clientErrors[]`, and emitted as a `daemon-error` event with
-  `source: "client"` on the watch stream.
-
-What works since v0.2:
-
-- The `review` skill drives `annai.sh surface ...` to author the
-  review: `surface scaffold` parses the PR diff into a typed,
-  schema-valid skeleton; the `*-add`, `*-update`, `*-drop` mutators
-  and the `set-*` setters update it atomically with zod validation
-  on every write. The agent never composes hunks or edits the JSON
-  structure by hand.
-- A local daemon serves a React frontend (diff rendering via
-  `@pierre/diffs`, diagrams via `mermaid`).
-- **Drafting comments** inline on a line, on a multi-line range, on a
-  whole file, or as a top-level PR body. Agent suggestions can be
-  accepted as drafts or dismissed.
-- **Decision picker** — Approve or Comment — with a third action,
-  Dismiss session, that closes without sending. Every action opens a
-  confirmation modal that previews the comments grouped by file.
+- **Ordered surface.** Base context → entry points → supporting code,
+  not alphabetical file list. Group-level intros explain *why* a set
+  of diffs belongs together.
+- **Typed side notes** on individual diffs — `note`, `question`,
+  `pattern`, `surface-check`, `discrepancy` — rendered in a column
+  alongside the code so the reviewer reads the *why* next to the
+  *what*.
+- **Agent suggestions inline.** The agent can attach `suggestion`
+  blocks with an alternative snippet; the reviewer accepts as a
+  draft comment or dismisses with one click.
+- **Mermaid diagrams** at the PR level or per-group, with light- and
+  dark-theme palettes that follow the page toggle.
+- **Markdown everywhere.** Tldr, group intros, annotations,
+  suggestions, drafts, and review prompts all render markdown
+  (code, lists, links, bold).
+- **Drafting**: line, multi-line range, whole-file (composer is
+  attached to the file header so it expands inline under the diff
+  bar), and the overall PR body. Every composer accepts
+  `Ctrl/Cmd+Enter` to save.
+- **Decision picker**: *Approve*, *Comment*, or *Dismiss session*.
+  Submitting opens a confirmation modal that previews the queued
+  comments grouped by file and lets you author the overall PR body
+  right there.
 - **Single-shot GitHub submission** via `gh api graphql`: one
   `addPullRequestReview` (with line/range threads), one
-  `addPullRequestReviewThread` per file-level draft (`subjectType: FILE`),
-  one `submitPullRequestReview` to finalise. The reviewer never sees
-  comments arrive on the PR one at a time.
-
-Still deferred:
-
-- **Ask-agent threads** — inline "ask the agent" interaction from the
-  browser, with the agent replying via `annai.sh reply`. The `reply` CLI
-  subcommand is still a stub.
+  `addPullRequestReviewThread` per file-level draft
+  (`subjectType: FILE`), one `submitPullRequestReview` to finalise.
+  All comments land in one review event — the reviewer never sees
+  them arrive one at a time.
+- **Light / dark theme** with a one-click toggle in the top nav.
+  Mermaid, the diff viewer, and every annotation respect it.
+- **Surface authoring CLI** the agent drives instead of plain-editing
+  `surface.json`: `scaffold` parses the PR diff into a typed
+  skeleton, `*-add` / `*-update` / `*-drop` and `set-*` mutate it
+  atomically with zod validation on every write.
+- **Client-side error capture.** `window.onerror`, unhandled
+  rejections, and React error boundaries all POST to the daemon and
+  surface in `annai.sh status` and on the watch stream.
 
 ## Install
 

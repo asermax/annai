@@ -10,7 +10,7 @@ tags: [skill-idea, code-review, tool]
 
 **Name:** Annai (案内 — guidance, showing the way). Chosen because the core action is guiding the reviewer through the code in the right order to comprehend it. Reserved for when the idea graduates into a real implementation; this idea note keeps the descriptive `code-review-surface` slug.
 
-> **Implementation status:** The interactive design described below ships in two slices. v0.2 implements the read-only surface plus drafting line / range / file / PR-level comments and a single-shot GitHub submission via GraphQL. Ask-agent threads (the "Ask agent" interaction in prototype v04) are deferred to v0.3. The runtime design lives in [`annai-architecture.md`](./annai-architecture.md).
+> **Implementation status:** The interactive design described below ships in two slices. v0.2–v0.3 implement the read-only surface, drafting line / range / file / PR-level comments, a surface-authoring CLI for the agent (`scaffold`, `*-add`/`*-update`/`*-drop`, `set-*`, `validate`, `show`), per-page light/dark theme with a mermaid palette that follows it, and a single-shot GitHub submission via GraphQL. Ask-agent threads (the "Ask agent" interaction in prototype v04) are still deferred. The runtime design lives in [`annai-architecture.md`](./annai-architecture.md).
 
 ## The Itch
 

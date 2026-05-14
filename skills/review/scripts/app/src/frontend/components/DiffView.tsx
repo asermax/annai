@@ -8,6 +8,7 @@ import type { DiffSide } from '../../shared/drafts.ts'
 import { useDrafts } from '../state/drafts.tsx'
 import { DraftComposer } from './DraftComposer.tsx'
 import { DraftDisplay } from './DraftDisplay.tsx'
+import { FileCommentComposer } from './FileCommentComposer.tsx'
 import { SuggestionBlock } from './SuggestionBlock.tsx'
 
 interface Props {
@@ -173,6 +174,7 @@ export const DiffView = forwardRef<HTMLDivElement, Props>(({ diff }, ref) => {
           + Comment on file
         </button>
       </div>
+      {fileComposerOpen ? <FileCommentComposer path={diff.path} /> : null}
       <div className="diff-body">
         <PatchDiff<AnnotationMeta>
           patch={unified}

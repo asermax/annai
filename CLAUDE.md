@@ -11,18 +11,20 @@ the full runtime design lives in [docs/annai-architecture.md](docs/annai-archite
 HTML prototypes (`docs/prototype-v0?.html`) show the target visual shape —
 v04 is the latest.
 
-## Current scope (v0.3.1)
+## Current scope (v0.3.3)
 
-v0.3.1 builds on v0.2's drafts + submit flow with a critical bug fix and
-authoring polish.
+v0.3.x builds on v0.2's drafts + submit flow. v0.3.1 fixed a blank-page
+bug and shipped surface-authoring CLI; v0.3.2–v0.3.3 are UX polish on
+the rendered surface.
 
-**Bug fix:** the `@pierre/diffs` v1.1.22 `InteractionManager` forbids
-combining `onGutterUtilityClick` with `renderGutterUtility`. v0.3.0
-shipped both, which left the page blank as soon as a surface had any
-annotations. v0.3.1 keeps only the imperative click handler (which is
-what carries the `SelectedLineRange` we need for line/range drafts).
+**Bug fix (v0.3.1):** the `@pierre/diffs` v1.1.22 `InteractionManager`
+forbids combining `onGutterUtilityClick` with `renderGutterUtility`.
+v0.3.0 shipped both, which left the page blank as soon as a surface
+had any annotations. v0.3.1 keeps only the imperative click handler
+(which is what carries the `SelectedLineRange` we need for line/range
+drafts).
 
-**Surface authoring (v0.3.1 additions):**
+**Surface authoring CLI (v0.3.1 additions):**
 
 - `*-update` verbs for every authored object: `group-update`,
   `annotation-update`, `suggestion-update`, `diagram-update`. Every
@@ -42,7 +44,37 @@ what carries the `SelectedLineRange` we need for line/range drafts).
 - `diagram-add` / `diagram-update` parse the mermaid source with the
   bundled renderer; pass `--skip-validate` to bypass.
 
-**Other:**
+**Rendered-surface UX (v0.3.2–v0.3.3):**
+
+- The "Comment on file" trigger lives inside the file header
+  (`.diff-head`), and the composer expands inline directly under it —
+  flush inside the diff frame — instead of floating above the diff.
+  `FileCommentComposer.tsx` owns the composer; `FileLevelComments.tsx`
+  only renders saved drafts.
+- Mermaid diagrams follow the page theme dynamically. A small
+  `useTheme()` hook in `MermaidDiagram.tsx` listens for `data-theme`
+  changes on `<html>` (via `MutationObserver`) and re-renders with
+  `theme: 'dark'` or `'neutral'`. The previous hardcoded `'neutral'`
+  clashed in dark mode.
+- The overall PR-level review comment is authored inside the Confirm
+  Review modal, not at the bottom of the page. The old
+  `PRLevelComment.tsx` is deleted; `ConfirmReviewModal.tsx` owns the
+  textarea bound to the same `prBody` / `setPrBody` (and
+  `PUT /api/pr-body`) used everywhere.
+- `Surface.tldr` and `Surface.reviewPrompts` items render through
+  `marked` (block / inline respectively), matching every other prose
+  field. Identifiers / titles stay plain text.
+- `Ctrl/Cmd+Enter` submits the active composer. A single
+  `src/frontend/lib/keyboard.ts → onSubmitKey(save)` helper is wired
+  into every composer textarea (line/range, file-level, draft-edit,
+  modal PR body — where it triggers `onConfirm` and submits the
+  review).
+- Composer-open state is now in the drafts context
+  (`activeFileComposerPath`), so the trigger button in `.diff-head`
+  and the composer body in the diff frame coordinate from separate
+  subtrees with single-active-composer semantics.
+
+**Other (v0.3.1):**
 
 - First-run bootstrap pipes npm/Vite output to
   `$XDG_STATE_HOME/annai/bootstrap-<ts>.log` so the agent sees one
@@ -123,13 +155,16 @@ The interactive subcommands `watch`, `result`, and `submit` are real.
     from `diagram-add` / `diagram-update`; importable parser, no DOM.
   - `src/frontend/*` — React 19 + Vite app, served at `/` by the daemon.
     `state/drafts.tsx` is the central React context (reducer + API
-    wrappers). `api/client-errors.ts` installs window.onerror /
-    unhandledrejection listeners and POSTs to the daemon.
+    wrappers, including `activeFileComposerPath`). `api/client-errors.ts`
+    installs window.onerror / unhandledrejection listeners and POSTs to
+    the daemon. `lib/keyboard.ts` exports `onSubmitKey(save)` — the
+    `Ctrl/Cmd+Enter` handler every composer textarea uses.
     `components/ErrorBoundary.tsx` wraps the whole app so a render
     throw lands as a visible fallback + a client-error report.
     `components/{DraftComposer,DraftDisplay,FileLevelComments,
-    PRLevelComment,SubmitBar,ConfirmReviewModal,DismissSessionModal}.tsx`
-    are the v0.2 interaction surface.
+    FileCommentComposer,SubmitBar,ConfirmReviewModal,DismissSessionModal}.tsx`
+    are the interaction surface. The PR-level review body is composed
+    inside `ConfirmReviewModal` (no standalone bottom-of-page section).
   - `dist/` — gitignored; built by `annai.sh` on first run.
   - `tests/{unit,frontend}/` — vitest.
 

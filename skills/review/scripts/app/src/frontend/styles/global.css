@@ -450,6 +450,15 @@ nav.top .spacer { flex: 1; }
 .draft-composer.file-level {
   margin: 0 12px;
 }
+/* in-header variant sits flush inside the diff frame, under .diff-head */
+.draft-composer.file-level.in-header {
+  margin: 0;
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  border-bottom: 1px solid var(--border);
+}
 
 /* submit bar */
 .submit-bar {
