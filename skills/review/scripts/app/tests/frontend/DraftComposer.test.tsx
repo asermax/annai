@@ -11,6 +11,7 @@ const STATE_RESPONSE = {
   decision: 'pending',
   prBody: '',
   drafts: [],
+  clientErrors: [],
 }
 
 const jsonResponse = (status: number, body: unknown): Response =>

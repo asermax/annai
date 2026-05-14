@@ -7,9 +7,16 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { sessionPaths } from '../shared/paths.ts'
 import { surfaceSchema } from '../shared/surface.ts'
 import { sendCommand } from './ipc-client.ts'
+import { wantsHelp } from './output.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const DAEMON_ENTRY = resolve(here, '../daemon/daemon.js')  // dist/cli → dist/daemon/daemon.js
+
+const USAGE = `usage: annai.sh start --surface <path> --session <id> [--repo <path>] [--no-open]
+
+Spawns the detached daemon, validates and copies the surface, opens the
+browser (unless --no-open), and prints {sessionId, url} to stdout.
+`
 
 export interface StartArgs {
   surfacePath: string
@@ -51,6 +58,8 @@ const openBrowser = (url: string): void => {
 }
 
 export const runStart = async (argv: string[]): Promise<void> => {
+  if (wantsHelp(argv)) { process.stdout.write(USAGE); return }
+
   const args = parseStartArgs(argv)
   const paths = sessionPaths(args.sessionId)
 

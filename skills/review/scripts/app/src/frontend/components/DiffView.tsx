@@ -172,7 +172,6 @@ export const DiffView = forwardRef<HTMLDivElement, Props>(({ diff }, ref) => {
           }}
           lineAnnotations={lineAnnotations}
           renderAnnotation={renderAnnotation}
-          renderGutterUtility={() => <span className="gutter-utility" aria-label="add comment">+</span>}
           disableWorkerPool
         />
       </div>

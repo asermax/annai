@@ -1,5 +1,18 @@
 import { ZodError } from 'zod'
 
+// When the agent pipes our stdout to `head` / `grep` and that pipe closes
+// early, node turns the EPIPE write into an unhandled stream 'error' that
+// crashes the process. Silence it: the consumer already got what they
+// wanted, and EPIPE is harmless from our side.
+process.stdout.on('error', err => {
+  if ((err as NodeJS.ErrnoException).code === 'EPIPE') process.exit(0)
+  throw err
+})
+process.stderr.on('error', err => {
+  if ((err as NodeJS.ErrnoException).code === 'EPIPE') process.exit(0)
+  throw err
+})
+
 import { runStart } from './cli/start.ts'
 import { runStop } from './cli/stop.ts'
 import { runStatus } from './cli/status.ts'

@@ -66,6 +66,10 @@ export interface DaemonErrorEvent extends EventBase {
   kind: 'daemon-error'
   message: string
   recoverable: false
+  // 'daemon' = server-side fault; 'client' = forwarded from the frontend's
+  // error boundary / window.onerror. Optional for backwards-compat with
+  // older event-log lines that pre-date this field.
+  source?: 'daemon' | 'client'
 }
 
 export type AnnaiEvent =

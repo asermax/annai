@@ -242,6 +242,166 @@ export const diagramAdd = (surface: Surface, op: DiagramAddOp): Surface => {
   return { ...surface, groups }
 }
 
+export interface GroupUpdateOp {
+  id: string
+  kind?: GroupKind
+  title?: string
+  intro?: string
+}
+
+export const groupUpdate = (surface: Surface, op: GroupUpdateOp): Surface => {
+  if (op.kind == null && op.title == null && op.intro == null) {
+    throw new Error('group-update: provide at least one of --kind, --title, --intro-file')
+  }
+
+  const idx = surface.groups.findIndex(g => g.id === op.id)
+  if (idx < 0) throw new Error(`group "${op.id}" not found`)
+
+  const groups = surface.groups.map((g, i) => {
+    if (i !== idx) return g
+    return {
+      ...g,
+      ...(op.kind != null ? { kind: op.kind } : {}),
+      ...(op.title != null ? { title: op.title } : {}),
+      ...(op.intro != null ? { intro: op.intro } : {}),
+    }
+  })
+
+  return { ...surface, groups }
+}
+
+export interface AnnotationUpdateOp {
+  diffId: string
+  id: string
+  kind?: AnnotationKind
+  title?: string
+  body?: string
+  lineRange?: [number, number]
+}
+
+export const annotationUpdate = (surface: Surface, op: AnnotationUpdateOp): Surface => {
+  if (op.kind == null && op.title == null && op.body == null && op.lineRange == null) {
+    throw new Error('annotation-update: provide at least one of --kind, --title, --body-file, --line-range')
+  }
+
+  return mapDiff(surface, op.diffId, diff => {
+    const idx = diff.annotations.findIndex(a => a.id === op.id)
+    if (idx < 0) throw new Error(`annotation "${op.id}" not found on diff "${op.diffId}"`)
+
+    const annotations = diff.annotations.map((a, i) => {
+      if (i !== idx) return a
+      return {
+        ...a,
+        ...(op.kind != null ? { kind: op.kind } : {}),
+        ...(op.title != null ? { title: op.title } : {}),
+        ...(op.body != null ? { body: op.body } : {}),
+        ...(op.lineRange != null ? { lineRange: op.lineRange } : {}),
+      }
+    })
+
+    return { ...diff, annotations }
+  })
+}
+
+export interface SuggestionUpdateOp {
+  diffId: string
+  id: string
+  body?: string
+  lineRange?: [number, number]
+  suggestionCode?: string
+  clearSuggestionCode?: boolean
+}
+
+export const suggestionUpdate = (surface: Surface, op: SuggestionUpdateOp): Surface => {
+  if (op.body == null && op.lineRange == null && op.suggestionCode == null && !op.clearSuggestionCode) {
+    throw new Error('suggestion-update: provide at least one of --body-file, --line-range, --code-file, --clear-code')
+  }
+  if (op.suggestionCode != null && op.clearSuggestionCode) {
+    throw new Error('suggestion-update: --code-file and --clear-code are mutually exclusive')
+  }
+
+  return mapDiff(surface, op.diffId, diff => {
+    const idx = diff.suggestions.findIndex(s => s.id === op.id)
+    if (idx < 0) throw new Error(`suggestion "${op.id}" not found on diff "${op.diffId}"`)
+
+    const suggestions = diff.suggestions.map((s, i) => {
+      if (i !== idx) return s
+
+      const next: Suggestion = {
+        ...s,
+        ...(op.body != null ? { body: op.body } : {}),
+        ...(op.lineRange != null ? { lineRange: op.lineRange } : {}),
+      }
+      if (op.suggestionCode != null) next.suggestionCode = op.suggestionCode
+      if (op.clearSuggestionCode) delete next.suggestionCode
+
+      return next
+    })
+
+    return { ...diff, suggestions }
+  })
+}
+
+export interface DiagramUpdateOp {
+  id: string
+  groupId?: string
+  title?: string
+  source?: string
+  clearTitle?: boolean
+}
+
+const updateDiagramIn = (
+  list: MermaidDiagram[] | undefined,
+  op: DiagramUpdateOp,
+  scope: string,
+): MermaidDiagram[] => {
+  const existing = list ?? []
+  const idx = existing.findIndex(d => d.id === op.id)
+  if (idx < 0) throw new Error(`diagram "${op.id}" not found ${scope}`)
+
+  return existing.map((d, i) => {
+    if (i !== idx) return d
+
+    const next: MermaidDiagram = {
+      ...d,
+      ...(op.source != null ? { source: op.source } : {}),
+    }
+    if (op.title != null) next.title = op.title
+    if (op.clearTitle) delete next.title
+
+    return next
+  })
+}
+
+export const diagramUpdate = (surface: Surface, op: DiagramUpdateOp): Surface => {
+  if (op.title == null && op.source == null && !op.clearTitle) {
+    throw new Error('diagram-update: provide at least one of --title, --source-file, --clear-title')
+  }
+  if (op.title != null && op.clearTitle) {
+    throw new Error('diagram-update: --title and --clear-title are mutually exclusive')
+  }
+
+  if (op.groupId == null) {
+    return { ...surface, diagrams: updateDiagramIn(surface.diagrams, op, 'at surface level') }
+  }
+
+  const gIdx = surface.groups.findIndex(g => g.id === op.groupId)
+  if (gIdx < 0) throw new Error(`group "${op.groupId}" not found`)
+
+  const updated = updateDiagramIn(surface.groups[gIdx]!.diagrams, op, `on group "${op.groupId}"`)
+  const groups = surface.groups.map((g, i) => (i === gIdx ? { ...g, diagrams: updated } : g))
+
+  return { ...surface, groups }
+}
+
+export const setTldr = (surface: Surface, value: string): Surface => {
+  return { ...surface, tldr: value }
+}
+
+export const setReviewPrompts = (surface: Surface, value: string[]): Surface => {
+  return { ...surface, reviewPrompts: value }
+}
+
 export const diagramDrop = (surface: Surface, diagramId: string, groupId?: string): Surface => {
   if (groupId == null) {
     const existing = surface.diagrams ?? []

@@ -6,6 +6,7 @@ import {
   type AnnotationKind,
   type GroupKind,
 } from '../../shared/surface.ts'
+import type { OutputMode } from '../output.ts'
 
 export type ArgSpec = Record<string, 'value' | 'flag'>
 
@@ -93,3 +94,20 @@ export const requireAnnotationKind = (cmd: string, raw: string): AnnotationKind 
 export const surfacePathOrDefault = (parsed: ParsedArgs): string => {
   return optionalStr(parsed, 'surface') ?? 'surface.json'
 }
+
+export const optionalBool = (parsed: ParsedArgs, name: string): boolean => {
+  return parsed[name] === true
+}
+
+// Add the standard --json / --quiet flag pair to a spec. Callers spread the
+// return value into their spec literal so output-mode handling stays uniform.
+export const withOutputFlags = (spec: ArgSpec): ArgSpec => ({
+  ...spec,
+  json: 'flag',
+  quiet: 'flag',
+})
+
+export const extractOutputMode = (parsed: ParsedArgs): OutputMode => ({
+  json: optionalBool(parsed, 'json'),
+  quiet: optionalBool(parsed, 'quiet'),
+})

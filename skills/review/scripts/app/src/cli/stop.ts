@@ -1,6 +1,12 @@
 import { rmSync, existsSync } from 'node:fs'
 import { sessionPaths } from '../shared/paths.ts'
 import { sendCommand } from './ipc-client.ts'
+import { wantsHelp } from './output.ts'
+
+const USAGE = `usage: annai.sh stop --session <id>
+
+Gracefully shuts down the daemon and removes the session directory.
+`
 
 const parseArgs = (argv: string[]): { sessionId: string } => {
   let sessionId: string | undefined
@@ -15,6 +21,7 @@ const parseArgs = (argv: string[]): { sessionId: string } => {
 }
 
 export const runStop = async (argv: string[]): Promise<void> => {
+  if (wantsHelp(argv)) { process.stdout.write(USAGE); return }
   const { sessionId } = parseArgs(argv)
   const paths = sessionPaths(sessionId)
 

@@ -79,8 +79,13 @@ nonce). The surface lives at
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/annai.sh" surface scaffold \
-  --pr <n> --repo <path> --out <session-dir>/surface.json
+  --pr <n> --repo <path-or-slug> --out <session-dir>/surface.json
 ```
+
+`--repo` accepts either a GitHub `OWNER/REPO` slug **or** a local
+clone path (the slug is resolved via `gh repo view` inside that
+directory). The local path goes into `surface.repo.path` so the
+daemon can find the working tree.
 
 Fetches PR metadata via `gh pr view`, parses every file's hunks from
 `gh pr diff`, and writes a schema-valid skeleton: one `unsorted`
@@ -89,6 +94,15 @@ supporting group containing every changed file, empty `tldr` /
 diff. Each diff gets a stable id like `diff-src-foo-ts` you'll
 reference in later commands.
 
+##### Line ranges (read this before annotating)
+
+`--line-range` on `annotation-add` / `suggestion-add` always refers to
+**new-file** line numbers — the `newLine` values from the scaffold's
+parsed hunks. To find a usable range, run
+`annai.sh surface show --surface <p> --diff <id> --text` and read the
+new-file column. Don't guess line numbers from the diff body; the
+parsed structure is the source of truth.
+
 #### 3b. Author with scoped subcommands
 
 Don't edit hunks by hand — the scaffold has them right. Use the
@@ -96,6 +110,11 @@ Don't edit hunks by hand — the scaffold has them right. Use the
 (intro, annotation body, suggestion body, mermaid source) is passed
 via `--*-file <path>` so you can write multi-line markdown to a temp
 file with `Write` and reference it.
+
+Every surface op:
+- Prints a one-line success summary (e.g. `annai: annotation "ann-1" added to "diff-foo" at L13–22 (note)`).
+- Accepts `--json` for a single-line JSON output, `--quiet` for none.
+- Accepts `--help` for per-op usage.
 
 ```bash
 # Create the groups you've decided on. --before / --after control order.
@@ -110,7 +129,6 @@ annai.sh surface diff-move --surface <p> --diff diff-src-models-user-ts \
 annai.sh surface diff-drop --surface <p> --diff diff-package-lock-json
 
 # Annotate (highest volume). --kind ∈ pattern | note | question | surface-check | discrepancy.
-# --line-range references *new-file* line numbers from the scaffold's `newLine` values.
 annai.sh surface annotation-add --surface <p> \
   --diff diff-src-handlers-create-ts \
   --id ann-deferred-black-hole --kind question \
@@ -122,21 +140,76 @@ annai.sh surface suggestion-add --surface <p> --diff <id> --id sug-1 \
   --body-file /tmp/sug.md --line-range 12,18 --code-file /tmp/sug-code.txt
 
 # Mermaid diagrams. --group <id> for group-scoped; omit for surface-level.
+# The mermaid source is parsed with the bundled renderer; pass --skip-validate
+# to bypass when needed (rare).
 annai.sh surface diagram-add --surface <p> --id flow \
   --title "Submit flow" --source-file /tmp/flow.mmd --group entry
 ```
 
 Drop-variants exist for every add: `group-drop`, `diff-drop`,
-`annotation-drop`, `suggestion-drop`, `diagram-drop`. Run
-`annai.sh surface` with no args to print the full list.
+`annotation-drop`, `suggestion-drop`, `diagram-drop`.
 
-#### 3c. Fill in `tldr` and `reviewPrompts` with `Edit`
+**Update-variants** exist too — use them to revise an item without
+dropping and re-adding (which loses position / ids):
+`group-update`, `annotation-update`, `suggestion-update`,
+`diagram-update`. Every field is optional; only what you pass is
+changed. Examples:
 
-These are short — `tldr` is one string, `reviewPrompts` is a small
-array — so plain `Edit` on the JSON is simpler than a CLI helper.
-Leave them for last so you've already seen the whole diff.
+```bash
+annai.sh surface group-update --surface <p> --id entry --title "Entry: webhook handlers"
 
-#### 3d. Validation contract
+annai.sh surface annotation-update --surface <p> \
+  --diff diff-src-handlers-create-ts --id ann-deferred-black-hole \
+  --body-file /tmp/ann-v2.md
+
+annai.sh surface diagram-update --surface <p> --id flow \
+  --source-file /tmp/flow-v2.mmd
+```
+
+Run `annai.sh surface` with no args to print the full list.
+
+#### 3c. Fill in `tldr` and `reviewPrompts`
+
+```bash
+# tldr: short prose, file-backed for multi-line content.
+annai.sh surface set-tldr --surface <p> --body-file /tmp/tldr.md
+
+# reviewPrompts: one per line, blank lines ignored.
+annai.sh surface set-review-prompts --surface <p> --file /tmp/prompts.txt
+```
+
+Leave both for last so you've already seen the whole diff. If you
+need to revise them later, just re-run the same setters.
+
+#### 3d. Introspection: `surface show` and `surface validate`
+
+`surface show` is read-only and answers "what's in this surface
+right now?" Three modes:
+
+```bash
+# Overview: pr + tldr + per-group counts + surface-level diagrams + prompts.
+annai.sh surface show --surface <p>
+
+# Group details + per-diff counts.
+annai.sh surface show --surface <p> --group <id>
+
+# A diff's hunks rendered with new-file line numbers + its annotations
+# + suggestions. This is how you find usable --line-range values.
+annai.sh surface show --surface <p> --diff <id>
+
+# Add --text for human-readable formatting; default output is JSON.
+```
+
+`surface validate` re-runs the zod schema against the file and
+prints a one-line summary on success:
+
+```bash
+annai.sh surface validate --surface <p>           # base check
+annai.sh surface validate --surface <p> --strict  # also fail on non-empty unsorted,
+                                                   # empty group intros, empty tldr
+```
+
+#### 3e. Validation contract
 
 Every `surface` subcommand validates with zod before writing. So
 does `annai.sh start`. On failure, stderr is:
@@ -150,10 +223,9 @@ annai: surface validation failed
 — one issue per line, paths like `groups[0].diffs[1].annotations[0].kind`.
 Read each line, fix the cited field with the appropriate mutator
 (e.g. an unknown enum value on `groups[0].kind` → drop and re-add
-the group), and re-run. Don't `Edit` the JSON to silence the
-validator unless the failure is on `tldr` / `reviewPrompts`.
+the group, or use `group-update --kind …`), and re-run.
 
-#### 3e. Annotation/group/suggestion conventions
+#### 3f. Annotation/group/suggestion conventions
 
 Hard constraints:
 
@@ -260,8 +332,14 @@ wakes the agent).
   session; other reasons are browser-close / `stop` / signals. **Don't**
   call `submit` — there's nothing to send. The daemon has already exited;
   no `stop` needed.
-- `daemon-error` (`{ message }`) → report the failure to the user. If
-  possible, run `annai.sh status --session <id>` for diagnostics.
+- `daemon-error` (`{ message, source }`) → report the failure to the
+  user. `source: "client"` means the browser surfaced a runtime error
+  (window.onerror, unhandled rejection, or the React error boundary
+  fired); the page may have rendered a fallback. `source: "daemon"`
+  (or omitted) means a server-side fault. Run
+  `annai.sh status --session <id>` for full context — the
+  `clientErrors[]` array on the status JSON has the captured stack /
+  componentStack for every client-side report.
 
 ### 7. Submit the review
 

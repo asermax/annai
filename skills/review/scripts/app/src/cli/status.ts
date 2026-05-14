@@ -1,5 +1,11 @@
 import { sessionPaths } from '../shared/paths.ts'
 import { sendCommand } from './ipc-client.ts'
+import { wantsHelp } from './output.ts'
+
+const USAGE = `usage: annai.sh status --session <id>
+
+Prints the session state snapshot (drafts, prBody, decision, clientErrors, port, ...) as JSON.
+`
 
 const parseArgs = (argv: string[]): { sessionId: string } => {
   let sessionId: string | undefined
@@ -14,6 +20,7 @@ const parseArgs = (argv: string[]): { sessionId: string } => {
 }
 
 export const runStatus = async (argv: string[]): Promise<void> => {
+  if (wantsHelp(argv)) { process.stdout.write(USAGE); return }
   const { sessionId } = parseArgs(argv)
   const paths = sessionPaths(sessionId)
 

@@ -5,6 +5,7 @@
  * Session class.
  */
 
+import type { ClientError } from './client-errors.ts'
 import type { Draft } from './drafts.ts'
 import type { ReviewDecision } from './result.ts'
 
@@ -17,4 +18,5 @@ export interface SessionStateSnapshot {
   decision: SessionDecision
   prBody: string
   drafts: Draft[]
+  clientErrors: ClientError[]
 }

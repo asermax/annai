@@ -4,6 +4,8 @@ import { dirname } from 'node:path'
 
 import type { Surface } from '../shared/surface.ts'
 import { surfaceSchema } from '../shared/surface.ts'
+import type { ClientError, ClientErrorInput } from '../shared/client-errors.ts'
+import { MAX_CLIENT_ERRORS } from '../shared/client-errors.ts'
 import type { AnnaiEvent } from '../shared/events.ts'
 import type { Draft, DraftInput, DraftPatch } from '../shared/drafts.ts'
 import type { ReviewDecision, Result } from '../shared/result.ts'
@@ -34,6 +36,7 @@ export class Session {
       decision: 'pending',
       prBody: '',
       drafts: [],
+      clientErrors: [],
     }
   }
 
@@ -47,7 +50,23 @@ export class Session {
   }
 
   snapshot (): SessionStateSnapshot {
-    return { ...this.state, drafts: [...this.state.drafts] }
+    return {
+      ...this.state,
+      drafts: [...this.state.drafts],
+      clientErrors: [...this.state.clientErrors],
+    }
+  }
+
+  // Record an error reported by the browser. Cap the array so a runaway
+  // render loop can't fill the state file. Returns the persisted entry so
+  // the HTTP layer can attach it to a daemon-error event.
+  recordClientError (input: ClientErrorInput): ClientError {
+    const entry: ClientError = { ...input, at: new Date().toISOString() }
+    const next = [...this.state.clientErrors, entry].slice(-MAX_CLIENT_ERRORS)
+    this.state = { ...this.state, clientErrors: next }
+    this.persist()
+
+    return entry
   }
 
   // Draft mutators — each returns the resulting Draft (or null for not-found) so

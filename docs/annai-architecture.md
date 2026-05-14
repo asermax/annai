@@ -267,28 +267,33 @@ off the command line.
 
 | Sub-op | Role |
 |---|---|
-| `surface scaffold --pr <n> --repo <path> [--out <file>] [--diff <file>] [--meta <file>]` | Resolve PR meta (`gh pr view`) + unified diff (`gh pr diff`), parse hunks via `src/shared/diff-parser.ts`, emit a schema-valid skeleton (one `unsorted` supporting group, every changed file present, empty annotations / suggestions / `tldr` / `reviewPrompts`). `--diff` / `--meta` bypass `gh` for tests. |
+| `surface scaffold --pr <n> --repo <path \| OWNER/REPO> [--out <file>] [--diff <file>] [--meta <file>]` | Resolve PR meta (`gh pr view`) + unified diff (`gh pr diff`), parse hunks via `src/shared/diff-parser.ts`, emit a schema-valid skeleton (one `unsorted` supporting group, every changed file present, empty annotations / suggestions / `tldr` / `reviewPrompts`). `--repo` accepts an `OWNER/REPO` slug or a local clone path (resolved via `gh repo view --json nameWithOwner` in that directory). `--diff` / `--meta` bypass `gh` for tests. |
 | `surface group-add --id <id> --kind <kind> --title <t> [--intro-file <f>] [--before <id> \| --after <id>]` | Create a new group. Ordering controls where it lands. |
+| `surface group-update --id <id> [--kind <k>] [--title <t>] [--intro-file <f>]` | Update fields on an existing group. Every field is optional; pass at least one. |
 | `surface group-drop --id <id>` | Remove an empty group (refuses if it still has diffs). |
 | `surface diff-move --diff <id> --to-group <id> [--position <n>]` | Move a parsed-file diff between groups. The agent uses this to regroup files out of `unsorted` after the scaffold. |
 | `surface diff-drop --diff <id>` | Remove a file from the surface entirely (lockfile churn, etc.). |
 | `surface annotation-add --diff <id> --id <ann-id> --kind <k> --title <t> --body-file <f> --line-range <s>,<e>` | Append an annotation. `--line-range` is new-file numbers (from the scaffold's `newLine`). |
+| `surface annotation-update --diff <id> --id <ann-id> [--kind <k>] [--title <t>] [--body-file <f>] [--line-range <s>,<e>]` | Update fields on an existing annotation. |
 | `surface annotation-drop --diff <id> --id <ann-id>` | Remove an annotation. |
 | `surface suggestion-add --diff <id> --id <s-id> --body-file <f> --line-range <s>,<e> [--code-file <f>]` | Append an inline suggestion (renders as Accept-as-draft in the browser). |
+| `surface suggestion-update --diff <id> --id <s-id> [--body-file <f>] [--line-range <s>,<e>] [--code-file <f> \| --clear-code]` | Update fields on an existing suggestion. |
 | `surface suggestion-drop --diff <id> --id <s-id>` | Remove a suggestion. |
-| `surface diagram-add --id <id> --source-file <f> [--title <t>] [--group <g>]` | Append a mermaid diagram. Omit `--group` for surface-level. |
+| `surface diagram-add --id <id> --source-file <f> [--title <t>] [--group <g>] [--skip-validate]` | Append a mermaid diagram. Source is parsed via the bundled renderer; `--skip-validate` bypasses. Omit `--group` for surface-level. |
+| `surface diagram-update --id <id> [--group <g>] [--title <t> \| --clear-title] [--source-file <f>] [--skip-validate]` | Update fields on an existing diagram. |
 | `surface diagram-drop --id <id> [--group <g>]` | Remove a diagram. |
+| `surface set-tldr (--body-file <f> \| --value <inline>)` | Replace the surface `tldr`. |
+| `surface set-review-prompts (--file <f> \| --json-file <f>)` | Replace the surface `reviewPrompts` array. `--file` reads one prompt per line; `--json-file` reads a JSON array. |
+| `surface validate [--strict]` | Re-run the zod schema. `--strict` also fails on non-empty `unsorted`, empty group intros, and empty surface tldr. |
+| `surface show [--diff <id> \| --group <id>] [--text]` | Read-only introspection: overview, group detail, or diff hunks with new-file line numbers. Default JSON output; `--text` for human formatting. |
 
-All subcommands take `--surface <path>` (default `./surface.json`).
+All subcommands take `--surface <path>` (default `./surface.json`),
+`--json` for a single-line JSON success payload, `--quiet` to
+suppress success output, and `--help` for per-op usage.
 Validation failures are emitted to stderr as one zod issue per line
 in the form `  <json-path>: <message>` so the agent can fix specific
 fields directly. The same formatter runs for `annai.sh start`'s
 load-time validation.
-
-Low-volume top-level fields (`tldr`, `reviewPrompts`) have no
-dedicated mutator — the skill edits them with plain `Edit`. The
-mutator surface exists for operations whose volume scales with PR
-size; one-shot string fields don't justify CLI ceremony.
 
 Session state location:
 
@@ -320,7 +325,7 @@ stdout: only events the agent must react to are emitted, to keep Monitor quiet.
 | `agent-asked` | Reviewer triggers "Ask agent" | `threadId`, `context` (file, lineRange, surrounding annotation/draft), `question` |
 | `review-submitted` | Reviewer hits "Submit Review" — `result.json` written | `decision`, `commentCount` |
 | `session-aborted` | Reviewer closes browser without submitting / `annai.sh stop` issued | `reason` |
-| `daemon-error` | Unrecoverable server-side problem | `message`, `recoverable: false` |
+| `daemon-error` | Unrecoverable server-side problem **or** frontend reported a runtime failure (window.onerror / unhandledrejection / React error boundary) | `message`, `recoverable: false`, `source: 'daemon' \| 'client'` |
 
 ### Not emitted on `watch` (state-only; visible via `annai.sh status`)
 
@@ -491,6 +496,24 @@ Full schema lives at `skills/review/references/surface.schema.json`.
 - **Daemonization**: `start` double-forks (or spawns with
   `{detached: true, stdio: 'ignore'}`) and writes `pid` before returning. The
   agent-side `Bash` call returns immediately with `{sessionId, url}`.
+
+### Client-side error capture (v0.3.1)
+
+The frontend installs `window.addEventListener('error', …)` +
+`'unhandledrejection'` listeners at startup, plus a top-level
+`<ErrorBoundary>` around `<App>`. Each captured failure POSTs a
+`ClientErrorInput` (schema in `src/shared/client-errors.ts`) to
+`POST /api/client-errors`. The daemon validates it, appends it to
+`session.clientErrors[]` (capped at `MAX_CLIENT_ERRORS = 50`,
+oldest evicted first), and emits a `daemon-error` event with
+`source: 'client'`. The agent sees the event on the watch stream
+*and* the full list (including stack / componentStack) in
+`annai.sh status --session <id>` output. Dedup on the frontend side
+suppresses duplicate POSTs for the same error message per page
+load, so a render-loop bug can't hammer the daemon.
+
+The `Result` shape sent to GitHub is unchanged — `clientErrors[]`
+is debug context, never submitted.
 
 ---
 

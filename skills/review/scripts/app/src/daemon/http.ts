@@ -6,6 +6,7 @@ import { join, resolve, normalize, extname } from 'node:path'
 import { z } from 'zod'
 
 import type { Surface } from '../shared/surface.ts'
+import { clientErrorInputSchema } from '../shared/client-errors.ts'
 import { draftInputSchema, draftPatchSchema } from '../shared/drafts.ts'
 import { REVIEW_DECISIONS } from '../shared/result.ts'
 import { sessionPaths } from '../shared/paths.ts'
@@ -181,6 +182,27 @@ const handleApiRoute = async (
   if (path === '/api/dismiss' && method === 'POST') {
     sendJson(res, 200, { ok: true })
     setImmediate(() => opts.shutdown('dismissed-by-reviewer'))
+    return true
+  }
+
+  if (path === '/api/client-errors' && method === 'POST') {
+    const body = await readJsonBody(req)
+    const parsed = clientErrorInputSchema.safeParse(body)
+    if (!parsed.success) {
+      sendError(res, 400, parsed.error.message)
+      return true
+    }
+
+    const entry = opts.session.recordClientError(parsed.data)
+    opts.bus.emit({
+      kind: 'daemon-error',
+      at: entry.at,
+      message: entry.message,
+      recoverable: false,
+      source: 'client',
+    })
+
+    sendJson(res, 201, { ok: true })
     return true
   }
 

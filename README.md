@@ -18,16 +18,46 @@ explains the *why* alongside the *what* — in the order that makes sense.
 Read the long form in [`docs/code-review-surface.md`](./docs/code-review-surface.md);
 the runtime design lives in [`docs/annai-architecture.md`](./docs/annai-architecture.md).
 
-## Status — v0.2 (drafts → submit)
+## Status
 
-What works:
+**v0.3.1 — bug fix + authoring polish.** Building on v0.2's drafts +
+submit flow:
+
+- Fixes a `@pierre/diffs` gutter assertion that left the page blank as
+  soon as the surface contained any annotations. The library forbids
+  combining `onGutterUtilityClick` with `renderGutterUtility`; we now
+  keep only the imperative path (which is what the line/range draft
+  anchors need).
+- Surface authoring CLI: adds `*-update` verbs for groups,
+  annotations, suggestions, and diagrams; `set-tldr` and
+  `set-review-prompts`; `surface validate` (with `--strict`); and
+  `surface show` (overview / per-group / per-diff with new-file line
+  numbers — the introspection the agent needs to pick `--line-range`).
+- `surface scaffold --repo` accepts a local clone path **or** an
+  `OWNER/REPO` slug; the slug is resolved via `gh repo view` in the
+  directory when needed.
+- Every surface op now prints a one-line success summary, supports
+  `--json` for machine-readable output, `--quiet` for none, and
+  `--help` per-op. The first-run bootstrap pipes Vite/npm output to
+  a log file under `$XDG_STATE_HOME/annai/` so the agent sees only
+  one line on success.
+- Diagram authoring (`diagram-add` / `diagram-update`) parses the
+  source with the bundled mermaid renderer; `--skip-validate`
+  bypasses.
+- Client-side errors (window.onerror, unhandled rejection, React
+  error boundary) are captured by the frontend, POSTed to the daemon
+  at `/api/client-errors`, surfaced in `annai.sh status --session …`
+  as `clientErrors[]`, and emitted as a `daemon-error` event with
+  `source: "client"` on the watch stream.
+
+What works since v0.2:
 
 - The `review` skill drives `annai.sh surface ...` to author the
   review: `surface scaffold` parses the PR diff into a typed,
-  schema-valid skeleton; `group-add` / `diff-move` / `annotation-add`
-  / `suggestion-add` / `diagram-add` (and their `-drop` pairs)
-  mutate it atomically with zod validation on every write. The
-  agent never composes hunks or edits the JSON structure by hand.
+  schema-valid skeleton; the `*-add`, `*-update`, `*-drop` mutators
+  and the `set-*` setters update it atomically with zod validation
+  on every write. The agent never composes hunks or edits the JSON
+  structure by hand.
 - A local daemon serves a React frontend (diff rendering via
   `@pierre/diffs`, diagrams via `mermaid`).
 - **Drafting comments** inline on a line, on a multi-line range, on a
@@ -42,7 +72,7 @@ What works:
   one `submitPullRequestReview` to finalise. The reviewer never sees
   comments arrive on the PR one at a time.
 
-Not yet (v0.3):
+Still deferred:
 
 - **Ask-agent threads** — inline "ask the agent" interaction from the
   browser, with the agent replying via `annai.sh reply`. The `reply` CLI
@@ -136,12 +166,26 @@ Manual smoke against the bundled example surface:
 ./skills/review/scripts/annai.sh stop --session smoke1
 ```
 
-Smoke the surface-authoring CLI against a real PR:
+Smoke the surface-authoring CLI against a real PR. `--repo` takes
+either an `OWNER/REPO` slug or a local clone path:
 
 ```sh
 ./skills/review/scripts/annai.sh surface scaffold \
   --pr <n> --repo . --out /tmp/surface.json
-./skills/review/scripts/annai.sh surface          # full sub-op list
+
+# Pre- and post-editing checks.
+./skills/review/scripts/annai.sh surface validate --surface /tmp/surface.json
+./skills/review/scripts/annai.sh surface show     --surface /tmp/surface.json --text
+./skills/review/scripts/annai.sh surface show     --surface /tmp/surface.json --diff <id> --text
+
+# Edits (every op also accepts --json / --quiet / --help).
+./skills/review/scripts/annai.sh surface group-add        ...
+./skills/review/scripts/annai.sh surface group-update     --id entry --title "Entry point"
+./skills/review/scripts/annai.sh surface annotation-update --diff <id> --id <ann> --body-file new.md
+./skills/review/scripts/annai.sh surface set-tldr         --body-file tldr.md
+./skills/review/scripts/annai.sh surface set-review-prompts --file prompts.txt
+
+./skills/review/scripts/annai.sh surface          # full sub-op list with global flags
 ```
 
 More dev notes — layout, key invariants, dogfood targets — live in

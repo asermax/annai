@@ -11,37 +11,72 @@ the full runtime design lives in [docs/annai-architecture.md](docs/annai-archite
 HTML prototypes (`docs/prototype-v0?.html`) show the target visual shape —
 v04 is the latest.
 
-## Current scope (v0.2)
+## Current scope (v0.3.1)
 
-v0.2 adds **draft comments + single-shot GitHub review submission** on top
-of v0.1's read-only surface:
+v0.3.1 builds on v0.2's drafts + submit flow with a critical bug fix and
+authoring polish.
+
+**Bug fix:** the `@pierre/diffs` v1.1.22 `InteractionManager` forbids
+combining `onGutterUtilityClick` with `renderGutterUtility`. v0.3.0
+shipped both, which left the page blank as soon as a surface had any
+annotations. v0.3.1 keeps only the imperative click handler (which is
+what carries the `SelectedLineRange` we need for line/range drafts).
+
+**Surface authoring (v0.3.1 additions):**
+
+- `*-update` verbs for every authored object: `group-update`,
+  `annotation-update`, `suggestion-update`, `diagram-update`. Every
+  field is optional; only what you pass is changed.
+- `set-tldr` / `set-review-prompts` setters (the architecture doc
+  previously said to plain-`Edit` these; the skill now uses the CLI).
+- `surface validate [--strict]` re-runs zod against the file.
+- `surface show [--diff <id> | --group <id>] [--text]` is the
+  introspection the agent uses to find usable `--line-range` values
+  before annotating.
+- `surface scaffold --repo` accepts a local clone path **or**
+  `OWNER/REPO` slug. A directory resolves via `gh repo view --json
+  nameWithOwner` inside it.
+- Every surface op prints a one-line success summary by default,
+  supports `--json` for parseable output, `--quiet` for none, and
+  `--help` per-op.
+- `diagram-add` / `diagram-update` parse the mermaid source with the
+  bundled renderer; pass `--skip-validate` to bypass.
+
+**Other:**
+
+- First-run bootstrap pipes npm/Vite output to
+  `$XDG_STATE_HOME/annai/bootstrap-<ts>.log` so the agent sees one
+  line on success, plus the tail on failure.
+- Client-side errors (window.onerror, unhandled rejection, React
+  error boundary) are captured by the frontend and POSTed to
+  `POST /api/client-errors`. They land in `session.clientErrors[]`
+  (capped at 50), surface in `annai.sh status`, and emit a
+  `daemon-error` event with `source: "client"` on the watch stream.
+
+**Carried over from v0.2:**
 
 - The skill builds `surface.json` via the `annai.sh surface ...`
-  CLI — `scaffold` produces a hunks-parsed skeleton; `group-add` /
-  `diff-move` / `annotation-add` / `suggestion-add` / `diagram-add`
-  (and their `-drop` pairs) mutate it atomically with zod validation
-  on every write. The agent does not edit hunks / structure by hand.
+  CLI — `scaffold` produces a hunks-parsed skeleton; the `*-add`,
+  `*-update`, `*-drop` mutators and `set-*` setters mutate it
+  atomically with zod validation on every write. The agent does not
+  edit hunks / structure by hand.
 - The daemon serves the React frontend, exposes `GET /api/surface`, and
   hosts the draft API: `GET /api/state`, `POST/PATCH/DELETE /api/drafts`,
-  `PUT /api/pr-body`, `POST /api/submit`, `POST /api/dismiss`.
+  `PUT /api/pr-body`, `POST /api/submit`, `POST /api/dismiss`,
+  `POST /api/client-errors`.
 - The reviewer can draft inline comments on a line, a range, on a whole
   file, or as a top-level PR body. Agent `Suggestion` items render as
   accept-as-draft / dismiss candidates inline.
 - Top-nav has three actions — **Approve**, **Comment**, **Dismiss
   session** — each opening a confirmation modal that previews what's
-  about to happen (file-grouped draft list + PR body, with empty-state
-  warnings).
+  about to happen.
 - On submit, the daemon writes `result.json` and emits `review-submitted`.
-  The agent's `Monitor` of `annai.sh watch` sees the event, then runs
-  `annai.sh submit`, which makes a single atomic GraphQL submission to
-  GitHub: one `addPullRequestReview` (line + range threads), one
-  `addPullRequestReviewThread` per file-level draft (`subjectType: FILE`),
-  one `submitPullRequestReview` to finalise with `APPROVE` or `COMMENT`.
+  `annai.sh submit` makes a single atomic GraphQL submission to GitHub.
 - On dismiss, the daemon emits `session-aborted` and shuts down — no
   GitHub call.
 
 The interactive subcommands `watch`, `result`, and `submit` are real.
-`reply` (ask-agent threads) is still stubbed and deferred to v0.3.
+`reply` (ask-agent threads) is still stubbed and deferred.
 **If you're about to touch the ask-agent flow, re-read
 `docs/annai-architecture.md` first.**
 
@@ -63,23 +98,36 @@ The interactive subcommands `watch`, `result`, and `submit` are real.
     `annotation-add`, …) the skill drives instead of editing
     `surface.json` directly.
   - `src/daemon/*` — daemon process: `daemon.ts` (entry), `session.ts`
-    (state + atomic checkpoint + draft mutators + `buildResult`), `ipc.ts`
-    (length-prefixed JSON over unix socket), `events.ts` (typed event bus
-    + watch filter), `http.ts` (zero-dep static server + `/api/surface` +
-    draft API + submit/dismiss), `submission.ts` (pure GraphQL request
-    builders).
+    (state + atomic checkpoint + draft mutators + `buildResult` +
+    `recordClientError`), `ipc.ts` (length-prefixed JSON over unix
+    socket), `events.ts` (typed event bus + watch filter), `http.ts`
+    (zero-dep static server + `/api/surface` + draft API +
+    submit/dismiss + `POST /api/client-errors`), `submission.ts`
+    (pure GraphQL request builders).
   - `src/shared/*` — types and zod schemas shared between cli, daemon, and
     frontend. `drafts.ts` defines the `Draft` discriminated union (line /
     range / file) and the wire shape for the draft API; `result.ts`
     defines `Result` written to result.json; `session-state.ts` is the
-    `GET /api/state` shape. `diff-parser.ts` turns unified-diff text
-    into typed `Hunk[]` (used by `surface scaffold`);
-    `surface-mutators.ts` holds the pure per-op functions every
-    surface mutator handler calls; `surface-io.ts` wraps them in
-    read → validate → mutate → re-validate → atomic-write.
+    `GET /api/state` shape (now includes `clientErrors[]`).
+    `client-errors.ts` is the schema for browser-reported failures.
+    `diff-parser.ts` turns unified-diff text into typed `Hunk[]` (used
+    by `surface scaffold`); `surface-mutators.ts` holds the pure
+    per-op functions every surface mutator handler calls (including
+    the `*-update` and `set-*` mutators added in v0.3.1);
+    `surface-io.ts` wraps them in read → validate → mutate →
+    re-validate → atomic-write.
+  - `src/cli/output.ts` — shared `emitResult` / `wantsHelp` helpers
+    that every surface op uses for one-line success messages,
+    `--json` mode, and `--help`.
+  - `src/cli/surface/mermaid-validate.ts` — calls `mermaid.parse()`
+    from `diagram-add` / `diagram-update`; importable parser, no DOM.
   - `src/frontend/*` — React 19 + Vite app, served at `/` by the daemon.
     `state/drafts.tsx` is the central React context (reducer + API
-    wrappers). `components/{DraftComposer,DraftDisplay,FileLevelComments,
+    wrappers). `api/client-errors.ts` installs window.onerror /
+    unhandledrejection listeners and POSTs to the daemon.
+    `components/ErrorBoundary.tsx` wraps the whole app so a render
+    throw lands as a visible fallback + a client-error report.
+    `components/{DraftComposer,DraftDisplay,FileLevelComments,
     PRLevelComment,SubmitBar,ConfirmReviewModal,DismissSessionModal}.tsx`
     are the v0.2 interaction surface.
   - `dist/` — gitignored; built by `annai.sh` on first run.
@@ -111,15 +159,23 @@ Manual smoke from the repo root:
 
 Smoke the surface-authoring CLI against a real PR (uses `gh pr view`
 + `gh pr diff` under the hood; `--diff` / `--meta` escape hatches
-let tests bypass `gh`):
+let tests bypass `gh`). `--repo` accepts a local clone path or an
+`OWNER/REPO` slug; every op accepts `--json` / `--quiet` / `--help`:
 
 ```sh
 ./skills/review/scripts/annai.sh surface scaffold \
   --pr <n> --repo . --out /tmp/surface.json
+./skills/review/scripts/annai.sh surface validate --surface /tmp/surface.json
+./skills/review/scripts/annai.sh surface show     --surface /tmp/surface.json --text
+./skills/review/scripts/annai.sh surface show     --surface /tmp/surface.json --diff <id> --text
 ./skills/review/scripts/annai.sh surface group-add \
   --surface /tmp/surface.json --id entry --kind entry-point --title "Entry"
+./skills/review/scripts/annai.sh surface group-update \
+  --surface /tmp/surface.json --id entry --title "Entry: webhook handlers"
 ./skills/review/scripts/annai.sh surface diff-move \
   --surface /tmp/surface.json --diff <diff-id> --to-group entry
+./skills/review/scripts/annai.sh surface set-tldr \
+  --surface /tmp/surface.json --body-file /tmp/tldr.md
 ./skills/review/scripts/annai.sh surface          # full sub-op list
 ```
 
@@ -144,6 +200,17 @@ The agent never speaks HTTP — only via `annai.sh` subcommands.
   `src/shared/events.ts`) is the source of truth for "events the agent
   should react to" — keep it aligned with the architecture doc when adding
   new event kinds.
+- **Bootstrap log**: first-run `npm install && npm run build` output
+  goes to `${XDG_STATE_HOME:-$HOME/.local/state}/annai/bootstrap-<ts>.log`.
+  On success the agent only sees a one-line "installing..." message; on
+  failure the last 50 lines tail to stderr.
+- **`@pierre/diffs` gutter API**: the InteractionManager rejects
+  combining `options.onGutterUtilityClick` with the
+  `renderGutterUtility` / `renderHoverUtility` props. We use only the
+  imperative path because line/range drafts need the precise
+  `SelectedLineRange` it provides — if you need to restyle the
+  default gutter button, target the library's class in CSS rather
+  than reintroducing the render prop.
 
 ## Dogfood targets
 

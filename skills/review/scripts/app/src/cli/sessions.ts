@@ -1,5 +1,13 @@
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs'
 import { getSessionsRoot, sessionPaths } from '../shared/paths.ts'
+import { wantsHelp } from './output.ts'
+
+const USAGE = `usage: annai.sh sessions
+
+Lists every session directory found under \$XDG_RUNTIME_DIR/annai/sessions/
+along with its pid, port, startedAt, and a liveness check on the pid.
+Output is JSON.
+`
 
 interface SessionListing {
   sessionId: string
@@ -19,7 +27,9 @@ const isPidAlive = (pid: number): boolean => {
   }
 }
 
-export const runSessions = async (_argv: string[]): Promise<void> => {
+export const runSessions = async (argv: string[]): Promise<void> => {
+  if (wantsHelp(argv)) { process.stdout.write(USAGE); return }
+
   const root = getSessionsRoot()
   if (!existsSync(root)) {
     process.stdout.write(JSON.stringify({ sessions: [] }, null, 2) + '\n')

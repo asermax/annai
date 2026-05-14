@@ -13,6 +13,15 @@ import {
   extractFileDrafts,
   type GraphQLCall,
 } from '../daemon/submission.ts'
+import { wantsHelp } from './output.ts'
+
+const USAGE = `usage: annai.sh submit --session <id>
+
+Fetches the result payload via IPC, queries the PR node id + head commit
+OID, runs addPullRequestReview + addPullRequestReviewThread (one per
+file-level draft) + submitPullRequestReview, then prints
+{sessionId, reviewUrl, state, decision, commentCount}.
+`
 
 const parseArgs = (argv: string[]): { sessionId: string } => {
   let sessionId: string | undefined
@@ -105,6 +114,7 @@ const fetchResultViaIpc = async (sockPath: string): Promise<Result> => {
 }
 
 export const runSubmit = async (argv: string[]): Promise<void> => {
+  if (wantsHelp(argv)) { process.stdout.write(USAGE); return }
   const { sessionId } = parseArgs(argv)
   const paths = sessionPaths(sessionId)
 

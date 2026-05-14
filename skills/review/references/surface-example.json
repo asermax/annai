@@ -142,7 +142,13 @@
       ]
     }
   ],
-  "diagrams": [],
+  "diagrams": [
+    {
+      "id": "flow-advance",
+      "title": "Advance flow by scheduling mode",
+      "source": "flowchart LR\n  client[Client] -->|POST /advance| handler[advance handler]\n  handler -->|immediate| run[runTransition]\n  handler -->|queued| enq[enqueueTransition]\n  handler -->|deferred| nop[no-op 202]\n  run --> done[204]\n  enq --> done2[202]"
+    }
+  ],
   "reviewPrompts": [
     "Does the migration's CHECK constraint stay in sync with the handler's switch arms?",
     "Is there a story for 'deferred' transitions actually running?"

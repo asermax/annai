@@ -4,14 +4,20 @@ import type { Diff, Surface } from '../../src/shared/surface.ts'
 import {
   annotationAdd,
   annotationDrop,
+  annotationUpdate,
   diagramAdd,
   diagramDrop,
+  diagramUpdate,
   diffDrop,
   diffMove,
   groupAdd,
   groupDrop,
+  groupUpdate,
+  setReviewPrompts,
+  setTldr,
   suggestionAdd,
   suggestionDrop,
+  suggestionUpdate,
 } from '../../src/shared/surface-mutators.ts'
 
 const makeDiff = (id: string, path = `${id}.ts`): Diff => ({
@@ -244,5 +250,152 @@ describe('diagram mutators', () => {
 
   it('throws when dropping a missing diagram', () => {
     expect(() => diagramDrop(baseSurface(), 'nope')).toThrow(/diagram/)
+  })
+})
+
+describe('groupUpdate', () => {
+  it('updates kind, title, and intro independently', () => {
+    const s1 = groupUpdate(baseSurface(), { id: 'unsorted', title: 'Sorted now' })
+    expect(s1.groups[0]!.title).toBe('Sorted now')
+    expect(s1.groups[0]!.kind).toBe('supporting')
+    expect(s1.groups[0]!.intro).toBe('')
+
+    const s2 = groupUpdate(s1, { id: 'unsorted', kind: 'entry-point', intro: 'why it matters' })
+    expect(s2.groups[0]!.kind).toBe('entry-point')
+    expect(s2.groups[0]!.intro).toBe('why it matters')
+    expect(s2.groups[0]!.title).toBe('Sorted now')
+  })
+
+  it('rejects when no fields are passed', () => {
+    expect(() => groupUpdate(baseSurface(), { id: 'unsorted' })).toThrow(/at least one/)
+  })
+
+  it('throws on unknown group id', () => {
+    expect(() => groupUpdate(baseSurface(), { id: 'nope', title: 't' })).toThrow(/not found/)
+  })
+})
+
+describe('annotationUpdate', () => {
+  const seed = () => annotationAdd(baseSurface(), {
+    diffId: 'd-foo', id: 'a1', kind: 'note', title: 'orig', body: 'body', lineRange: [1, 2],
+  })
+
+  it('updates only passed fields', () => {
+    const s = annotationUpdate(seed(), { diffId: 'd-foo', id: 'a1', title: 'new', kind: 'question' })
+    const ann = s.groups[0]!.diffs[0]!.annotations[0]!
+    expect(ann.title).toBe('new')
+    expect(ann.kind).toBe('question')
+    expect(ann.body).toBe('body')
+    expect(ann.lineRange).toEqual([1, 2])
+  })
+
+  it('rejects when no fields are passed', () => {
+    expect(() => annotationUpdate(seed(), { diffId: 'd-foo', id: 'a1' })).toThrow(/at least one/)
+  })
+
+  it('throws on missing annotation', () => {
+    expect(() => annotationUpdate(seed(), { diffId: 'd-foo', id: 'nope', title: 't' })).toThrow(/not found/)
+  })
+
+  it('throws on missing diff', () => {
+    expect(() => annotationUpdate(seed(), { diffId: 'nope', id: 'a1', title: 't' })).toThrow(/diff/)
+  })
+})
+
+describe('suggestionUpdate', () => {
+  const seed = (code?: string) => suggestionAdd(baseSurface(), {
+    diffId: 'd-foo', id: 's1', body: 'change this', lineRange: [1, 1],
+    ...(code != null ? { suggestionCode: code } : {}),
+  })
+
+  it('updates body and line range', () => {
+    const s = suggestionUpdate(seed(), { diffId: 'd-foo', id: 's1', body: 'changed', lineRange: [2, 4] })
+    const sug = s.groups[0]!.diffs[0]!.suggestions[0]!
+    expect(sug.body).toBe('changed')
+    expect(sug.lineRange).toEqual([2, 4])
+  })
+
+  it('replaces suggestionCode when --code-file is set', () => {
+    const s = suggestionUpdate(seed('old'), { diffId: 'd-foo', id: 's1', suggestionCode: 'new' })
+    expect(s.groups[0]!.diffs[0]!.suggestions[0]!.suggestionCode).toBe('new')
+  })
+
+  it('removes suggestionCode with clearSuggestionCode', () => {
+    const s = suggestionUpdate(seed('drop me'), { diffId: 'd-foo', id: 's1', clearSuggestionCode: true })
+    expect(s.groups[0]!.diffs[0]!.suggestions[0]!.suggestionCode).toBeUndefined()
+  })
+
+  it('rejects when no fields are passed', () => {
+    expect(() => suggestionUpdate(seed(), { diffId: 'd-foo', id: 's1' })).toThrow(/at least one/)
+  })
+
+  it('rejects code-file and clear-code together', () => {
+    expect(() => suggestionUpdate(seed(), {
+      diffId: 'd-foo', id: 's1', suggestionCode: 'x', clearSuggestionCode: true,
+    })).toThrow(/mutually exclusive/)
+  })
+
+  it('throws on missing suggestion', () => {
+    expect(() => suggestionUpdate(seed(), { diffId: 'd-foo', id: 'nope', body: 'b' })).toThrow(/not found/)
+  })
+})
+
+describe('diagramUpdate', () => {
+  it('updates a surface-level diagram', () => {
+    const s1 = diagramAdd(baseSurface(), { id: 'flow', title: 'old', source: 'flowchart TD\n A --> B' })
+    const s2 = diagramUpdate(s1, { id: 'flow', title: 'new', source: 'flowchart TD\n A --> C' })
+    expect(s2.diagrams![0]).toEqual({ id: 'flow', title: 'new', source: 'flowchart TD\n A --> C' })
+  })
+
+  it('updates a group-level diagram', () => {
+    const s1 = diagramAdd(baseSurface(), {
+      id: 'erd', source: 'erDiagram\n A ||--o{ B : has', groupId: 'unsorted',
+    })
+    const s2 = diagramUpdate(s1, { id: 'erd', groupId: 'unsorted', title: 'ERD' })
+    expect(s2.groups[0]!.diagrams![0]).toEqual({
+      id: 'erd', title: 'ERD', source: 'erDiagram\n A ||--o{ B : has',
+    })
+  })
+
+  it('clears the title with clearTitle', () => {
+    const s1 = diagramAdd(baseSurface(), { id: 'flow', title: 'gone', source: 'flowchart TD\n A --> B' })
+    const s2 = diagramUpdate(s1, { id: 'flow', clearTitle: true })
+    expect(s2.diagrams![0]!.title).toBeUndefined()
+  })
+
+  it('rejects when no fields are passed', () => {
+    const s = diagramAdd(baseSurface(), { id: 'flow', source: 'flowchart TD\n A --> B' })
+    expect(() => diagramUpdate(s, { id: 'flow' })).toThrow(/at least one/)
+  })
+
+  it('rejects title and clearTitle together', () => {
+    const s = diagramAdd(baseSurface(), { id: 'flow', source: 'flowchart TD\n A --> B' })
+    expect(() => diagramUpdate(s, { id: 'flow', title: 'x', clearTitle: true })).toThrow(/mutually exclusive/)
+  })
+
+  it('throws on missing diagram', () => {
+    expect(() => diagramUpdate(baseSurface(), { id: 'nope', title: 't' })).toThrow(/not found/)
+  })
+
+  it('throws on missing group', () => {
+    expect(() => diagramUpdate(baseSurface(), { id: 'x', groupId: 'nope', title: 't' })).toThrow(/group/)
+  })
+})
+
+describe('setTldr / setReviewPrompts', () => {
+  it('replaces tldr', () => {
+    const s = setTldr(baseSurface(), 'a new summary')
+    expect(s.tldr).toBe('a new summary')
+  })
+
+  it('replaces reviewPrompts', () => {
+    const s = setReviewPrompts(baseSurface(), ['why', 'verify X'])
+    expect(s.reviewPrompts).toEqual(['why', 'verify X'])
+  })
+
+  it('clears reviewPrompts with empty array', () => {
+    const s1 = setReviewPrompts(baseSurface(), ['one'])
+    const s2 = setReviewPrompts(s1, [])
+    expect(s2.reviewPrompts).toEqual([])
   })
 })

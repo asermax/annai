@@ -594,22 +594,6 @@ nav.top .spacer { flex: 1; }
   background: #a40e26;
 }
 
-/* @pierre/diffs gutter utility */
-.gutter-utility {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
-  background: var(--accent, #0969da);
-  color: #fff;
-  font-weight: 700;
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
-}
-
 .diff-block {
   margin-bottom: 16px;
 }

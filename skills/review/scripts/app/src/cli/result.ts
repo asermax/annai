@@ -1,5 +1,12 @@
 import { sessionPaths } from '../shared/paths.ts'
 import { sendCommand } from './ipc-client.ts'
+import { wantsHelp } from './output.ts'
+
+const USAGE = `usage: annai.sh result --session <id>
+
+Dumps result.json from the daemon after the review has been submitted.
+Errors if no submission has happened yet.
+`
 
 const parseArgs = (argv: string[]): { sessionId: string } => {
   let sessionId: string | undefined
@@ -14,6 +21,7 @@ const parseArgs = (argv: string[]): { sessionId: string } => {
 }
 
 export const runResult = async (argv: string[]): Promise<void> => {
+  if (wantsHelp(argv)) { process.stdout.write(USAGE); return }
   const { sessionId } = parseArgs(argv)
   const paths = sessionPaths(sessionId)
 
