@@ -1,6 +1,6 @@
 {
   "name": "annai",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Code review surface: agent skill generates a guided JSON view of a PR, local server renders it in the browser.",
   "author": {
     "name": "Agustin Carrasco"

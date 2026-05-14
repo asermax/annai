@@ -3,6 +3,7 @@ import { marked } from 'marked'
 
 import type { Draft } from '../../shared/drafts.ts'
 import { useDrafts } from '../state/drafts.tsx'
+import { onSubmitKey } from '../lib/keyboard.ts'
 
 interface Props {
   draft: Draft
@@ -66,7 +67,14 @@ export const DraftDisplay = ({ draft }: Props) => {
           <span className="kind">Draft</span>
           <span className="ref">{refLabel(draft)}</span>
         </div>
-        <textarea value={body} onChange={e => setBody(e.target.value)} rows={4} disabled={busy} autoFocus />
+        <textarea
+          value={body}
+          onChange={e => setBody(e.target.value)}
+          onKeyDown={onSubmitKey(() => { void save() })}
+          rows={4}
+          disabled={busy}
+          autoFocus
+        />
         {error != null ? <div className="composer-error">{error}</div> : null}
         <div className="actions">
           <button type="button" onClick={cancel} disabled={busy}>Cancel</button>

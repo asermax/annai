@@ -156,10 +156,22 @@ export const DiffView = forwardRef<HTMLDivElement, Props>(({ diff }, ref) => {
     return null
   }, [draftsById, suggestionsById, drafts.activeAnchor, diff.path])
 
+  const fileComposerOpen = drafts.activeFileComposerPath === diff.path
+
   return (
     <div className="diff" ref={ref}>
       <div className="diff-head">
         <span className="path">{diff.path}</span>
+        <span className="spacer" />
+        <button
+          type="button"
+          className="file-comment-add"
+          onClick={() => drafts.openFileComposer(diff.path)}
+          disabled={fileComposerOpen}
+          title="Add a file-level comment"
+        >
+          + Comment on file
+        </button>
       </div>
       <div className="diff-body">
         <PatchDiff<AnnotationMeta>

@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 
 import type { Draft } from '../../shared/drafts.ts'
 import { useDrafts } from '../state/drafts.tsx'
+import { onSubmitKey } from '../lib/keyboard.ts'
 
 const refLabel = (draft: Draft): string => {
   if (draft.kind === 'file') return 'file'
@@ -29,6 +30,7 @@ export const ConfirmReviewModal = () => {
     confirmReview,
     drafts,
     prBody,
+    setPrBody,
     submitting,
     submitError,
     submit,
@@ -56,12 +58,18 @@ export const ConfirmReviewModal = () => {
       <div className="modal confirm-review" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3>{title}</h3>
 
-        {trimmedPrBody.length > 0 ? (
-          <section className="preview-pr-body">
-            <h4>Overall comment</h4>
-            <div className="body">{trimmedPrBody}</div>
-          </section>
-        ) : null}
+        <section className="overall-comment">
+          <h4>Overall comment</h4>
+          <p className="hint">Optional. Shows at the top of your review on GitHub.</p>
+          <textarea
+            value={prBody}
+            onChange={e => setPrBody(e.target.value)}
+            onKeyDown={onSubmitKey(onConfirm)}
+            placeholder="Summarise your review here…"
+            rows={4}
+            disabled={submitting}
+          />
+        </section>
 
         {drafts.length > 0 ? (
           <section className="preview-drafts">

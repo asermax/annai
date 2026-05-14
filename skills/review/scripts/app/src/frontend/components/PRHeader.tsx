@@ -1,3 +1,4 @@
+import { marked } from 'marked'
 import type { PRMeta } from '../../shared/surface.ts'
 
 interface Props {
@@ -6,6 +7,8 @@ interface Props {
 }
 
 export const PRHeader = ({ pr, tldr }: Props) => {
+  const tldrHtml = tldr.length > 0 ? marked.parse(tldr, { async: false }) as string : ''
+
   return (
     <header className="pr-header">
       <h1>
@@ -20,7 +23,7 @@ export const PRHeader = ({ pr, tldr }: Props) => {
         <span className="sep" />
         <span>+{pr.stats.additions} / −{pr.stats.deletions} across {pr.stats.files} {pr.stats.files === 1 ? 'file' : 'files'}</span>
       </div>
-      {tldr.length > 0 ? <div className="tldr">{tldr}</div> : null}
+      {tldr.length > 0 ? <div className="tldr" dangerouslySetInnerHTML={{ __html: tldrHtml }} /> : null}
     </header>
   )
 }

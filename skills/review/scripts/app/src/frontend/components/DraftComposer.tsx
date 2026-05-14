@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import type { Anchor } from '../state/drafts.tsx'
 import { useDrafts } from '../state/drafts.tsx'
+import { onSubmitKey } from '../lib/keyboard.ts'
 
 interface Props {
   anchor: Anchor
@@ -55,6 +56,7 @@ export const DraftComposer = ({ anchor }: Props) => {
       <textarea
         value={body}
         onChange={e => setBody(e.target.value)}
+        onKeyDown={onSubmitKey(() => { void save() })}
         placeholder="Leave a comment…"
         autoFocus
         rows={4}

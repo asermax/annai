@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 
 import type { FileDraft } from '../../shared/drafts.ts'
 import { useDrafts } from '../state/drafts.tsx'
+import { onSubmitKey } from '../lib/keyboard.ts'
 import { DraftDisplay } from './DraftDisplay.tsx'
 
 interface Props {
@@ -9,14 +10,15 @@ interface Props {
 }
 
 export const FileLevelComments = ({ path }: Props) => {
-  const { drafts: allDrafts, addDraft } = useDrafts()
+  const { drafts: allDrafts, addDraft, activeFileComposerPath, closeFileComposer } = useDrafts()
 
   const fileDrafts = useMemo<FileDraft[]>(
     () => allDrafts.filter((d): d is FileDraft => d.kind === 'file' && d.path === path),
     [allDrafts, path],
   )
 
-  const [composing, setComposing] = useState(false)
+  const composing = activeFileComposerPath === path
+
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -30,7 +32,6 @@ export const FileLevelComments = ({ path }: Props) => {
     try {
       await addDraft({ kind: 'file', path, body: trimmed })
       setBody('')
-      setComposing(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -40,9 +41,11 @@ export const FileLevelComments = ({ path }: Props) => {
 
   const cancel = (): void => {
     setBody('')
-    setComposing(false)
     setError(null)
+    closeFileComposer()
   }
+
+  if (fileDrafts.length === 0 && !composing) return null
 
   return (
     <div className="file-level-comments">
@@ -56,6 +59,7 @@ export const FileLevelComments = ({ path }: Props) => {
           <textarea
             value={body}
             onChange={e => setBody(e.target.value)}
+            onKeyDown={onSubmitKey(() => { void save() })}
             placeholder="Comment on this file…"
             autoFocus
             rows={3}
@@ -69,11 +73,7 @@ export const FileLevelComments = ({ path }: Props) => {
             </button>
           </div>
         </div>
-      ) : (
-        <button type="button" className="file-comment-add" onClick={() => setComposing(true)}>
-          + Comment on file
-        </button>
-      )}
+      ) : null}
     </div>
   )
 }

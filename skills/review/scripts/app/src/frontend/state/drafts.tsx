@@ -26,6 +26,7 @@ export interface DraftsState {
   drafts: Draft[]
   prBody: string
   activeAnchor: Anchor | null
+  activeFileComposerPath: string | null
   resolvedSuggestionIds: string[]   // accepted-as-draft or dismissed; in-memory only
   confirmReview: ReviewDecision | null
   confirmDismiss: boolean
@@ -38,6 +39,7 @@ const initialState: DraftsState = {
   drafts: [],
   prBody: '',
   activeAnchor: null,
+  activeFileComposerPath: null,
   resolvedSuggestionIds: [],
   confirmReview: null,
   confirmDismiss: false,
@@ -49,6 +51,8 @@ type Action =
   | { type: 'init', drafts: Draft[], prBody: string }
   | { type: 'open-anchor', anchor: Anchor }
   | { type: 'close-anchor' }
+  | { type: 'open-file-composer', path: string }
+  | { type: 'close-file-composer' }
   | { type: 'draft-added', draft: Draft }
   | { type: 'draft-updated', draft: Draft }
   | { type: 'draft-removed', id: string }
@@ -67,11 +71,22 @@ const reducer = (state: DraftsState, action: Action): DraftsState => {
     case 'init':
       return { ...state, ready: true, drafts: action.drafts, prBody: action.prBody }
     case 'open-anchor':
-      return { ...state, activeAnchor: action.anchor }
+      // opening an inline anchor closes any open file-level composer
+      return { ...state, activeAnchor: action.anchor, activeFileComposerPath: null }
     case 'close-anchor':
       return { ...state, activeAnchor: null }
+    case 'open-file-composer':
+      // opening a file-level composer closes any open inline anchor and any other file-level composer
+      return { ...state, activeFileComposerPath: action.path, activeAnchor: null }
+    case 'close-file-composer':
+      return { ...state, activeFileComposerPath: null }
     case 'draft-added':
-      return { ...state, drafts: [...state.drafts, action.draft], activeAnchor: null }
+      return {
+        ...state,
+        drafts: [...state.drafts, action.draft],
+        activeAnchor: null,
+        activeFileComposerPath: action.draft.kind === 'file' ? null : state.activeFileComposerPath,
+      }
     case 'draft-updated':
       return { ...state, drafts: state.drafts.map(d => (d.id === action.draft.id ? action.draft : d)) }
     case 'draft-removed':
@@ -106,6 +121,8 @@ const reducer = (state: DraftsState, action: Action): DraftsState => {
 export interface DraftsApi extends DraftsState {
   openAnchor: (anchor: Anchor) => void
   closeAnchor: () => void
+  openFileComposer: (path: string) => void
+  closeFileComposer: () => void
   addDraft: (input: DraftInput) => Promise<Draft>
   editDraft: (id: string, body: string) => Promise<Draft>
   dismissDraft: (id: string) => Promise<void>
@@ -140,6 +157,9 @@ export const DraftsProvider = ({ children }: ProviderProps) => {
 
   const openAnchor = useCallback((anchor: Anchor) => dispatch({ type: 'open-anchor', anchor }), [])
   const closeAnchor = useCallback(() => dispatch({ type: 'close-anchor' }), [])
+
+  const openFileComposer = useCallback((path: string) => dispatch({ type: 'open-file-composer', path }), [])
+  const closeFileComposer = useCallback(() => dispatch({ type: 'close-file-composer' }), [])
 
   const addDraft = useCallback(async (input: DraftInput): Promise<Draft> => {
     const draft = await apiCreate(input)
@@ -201,6 +221,8 @@ export const DraftsProvider = ({ children }: ProviderProps) => {
     ...state,
     openAnchor,
     closeAnchor,
+    openFileComposer,
+    closeFileComposer,
     addDraft,
     editDraft,
     dismissDraft,
@@ -212,7 +234,7 @@ export const DraftsProvider = ({ children }: ProviderProps) => {
     closeConfirmDismiss,
     submit,
     dismissSession,
-  }), [state, openAnchor, closeAnchor, addDraft, editDraft, dismissDraft, setPrBody, resolveSuggestion, openConfirmReview, closeConfirmReview, openConfirmDismiss, closeConfirmDismiss, submit, dismissSession])
+  }), [state, openAnchor, closeAnchor, openFileComposer, closeFileComposer, addDraft, editDraft, dismissDraft, setPrBody, resolveSuggestion, openConfirmReview, closeConfirmReview, openConfirmDismiss, closeConfirmDismiss, submit, dismissSession])
 
   return <DraftsContext.Provider value={value}>{children}</DraftsContext.Provider>
 }

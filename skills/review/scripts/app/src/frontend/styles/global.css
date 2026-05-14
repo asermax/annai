@@ -173,6 +173,14 @@ nav.top .spacer { flex: 1; }
 .pr-header .meta .sep::before { content: "·"; margin: 0 4px; color: var(--faint); }
 .pr-header .meta code { color: var(--ink); background: var(--bg-alt); padding: 1px 6px; border-radius: 3px; }
 .pr-header .tldr { margin-top: 14px; color: var(--ink); max-width: 1100px; }
+.pr-header .tldr p { margin: 0 0 8px; }
+.pr-header .tldr p:last-child { margin-bottom: 0; }
+.pr-header .tldr code { background: var(--bg-alt); padding: 0 4px; border-radius: 3px; }
+.pr-header .tldr ul, .pr-header .tldr ol { margin: 0 0 8px; padding-left: 20px; }
+
+.review-prompts { max-width: 1100px; }
+.review-prompts li { margin: 4px 0; }
+.review-prompts code { background: var(--bg-alt); padding: 0 4px; border-radius: 3px; }
 
 /* group */
 .group { margin-bottom: 60px; }
@@ -242,6 +250,25 @@ nav.top .spacer { flex: 1; }
 .diff { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: var(--bg); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
 .diff-head { background: var(--bg-alt); border-bottom: 1px solid var(--border); padding: 8px 12px; display: flex; align-items: center; gap: 10px; font-size: 13px; font-family: -apple-system, system-ui, sans-serif; }
 .diff-head .path { font-family: ui-monospace, Menlo, monospace; font-weight: 500; }
+.diff-head .spacer { flex: 1; }
+.diff-head .file-comment-add {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.diff-head .file-comment-add:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--bg);
+}
+.diff-head .file-comment-add:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 .diff-body { overflow-x: auto; }
 
 /* draft / suggestion block */
@@ -383,7 +410,6 @@ nav.top .spacer { flex: 1; }
 .draft-composer button,
 .draft-display button,
 .modal button,
-.file-comment-add,
 .submit-bar button {
   background: var(--bg);
   border: 1px solid var(--border);
@@ -421,43 +447,8 @@ nav.top .spacer { flex: 1; }
   gap: 8px;
   margin: 8px 0;
 }
-.file-comment-add {
-  align-self: flex-start;
-  margin: 0 12px;
-  font-size: 12px;
-  color: var(--muted);
-}
-.file-comment-add:hover { color: var(--ink); }
 .draft-composer.file-level {
   margin: 0 12px;
-}
-
-/* PR-level comment */
-.pr-level-comment {
-  margin-top: 24px;
-  padding: 16px 20px;
-  background: var(--bg-alt);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-.pr-level-comment h2 {
-  font-size: 16px;
-  margin: 0 0 4px;
-}
-.pr-level-comment .hint {
-  color: var(--muted);
-  font-size: 12px;
-  margin: 0 0 8px;
-}
-.pr-level-comment textarea {
-  width: 100%;
-  box-sizing: border-box;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 8px 10px;
-  font: inherit;
-  resize: vertical;
 }
 
 /* submit bar */
@@ -505,13 +496,21 @@ nav.top .spacer { flex: 1; }
 }
 .modal h3 { margin: 0 0 12px; font-size: 18px; }
 .modal h4 { margin: 12px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-.modal .preview-pr-body .body {
-  background: var(--bg-alt);
-  padding: 8px 10px;
+.modal .overall-comment .hint {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0 0 6px;
+}
+.modal .overall-comment textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 4px;
-  font-size: 13px;
-  white-space: pre-wrap;
-  margin-bottom: 8px;
+  padding: 6px 8px;
+  font: inherit;
+  font-family: ui-monospace, Menlo, monospace;
+  resize: vertical;
 }
 .modal .preview-drafts .file-group {
   margin-bottom: 10px;

@@ -1,3 +1,5 @@
+import { marked } from 'marked'
+
 import type { Surface } from '../../shared/surface.ts'
 import { PRHeader } from './PRHeader.tsx'
 import { OutlineNav } from './OutlineNav.tsx'
@@ -5,7 +7,6 @@ import { Group } from './Group.tsx'
 import { MermaidDiagram } from './MermaidDiagram.tsx'
 import { ThemeToggle } from './ThemeToggle.tsx'
 import { SubmitBar } from './SubmitBar.tsx'
-import { PRLevelComment } from './PRLevelComment.tsx'
 import { ConfirmReviewModal } from './ConfirmReviewModal.tsx'
 import { DismissSessionModal } from './DismissSessionModal.tsx'
 
@@ -48,13 +49,16 @@ export const SurfacePage = ({ surface }: Props) => {
                 <div className="label">Review prompts</div>
                 <h2>Things to keep in mind as you read</h2>
               </header>
-              <ul>
-                {surface.reviewPrompts.map((prompt, idx) => <li key={idx}>{prompt}</li>)}
+              <ul className="review-prompts">
+                {surface.reviewPrompts.map((prompt, idx) => (
+                  <li
+                    key={idx}
+                    dangerouslySetInnerHTML={{ __html: marked.parseInline(prompt, { async: false }) as string }}
+                  />
+                ))}
               </ul>
             </section>
           ) : null}
-
-          <PRLevelComment />
         </div>
       </div>
 
