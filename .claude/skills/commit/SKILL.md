@@ -1,15 +1,15 @@
 ---
 name: commit
-description: Bump the plugin version, decide whether the change warrants README/CLAUDE.md updates, commit the change as a conventional-commits feature commit and the version bump as a separate chore commit, then push. Use when the user asks to "commit", "ship", "bump and push", or "land" the current working-tree changes.
+description: Bump the plugin version, decide whether the change warrants README/CLAUDE.md updates, commit the change (feature files + bump together) as a single conventional-commits commit, then push. Use when the user asks to "commit", "ship", "bump and push", or "land" the current working-tree changes.
 disable-model-invocation: true
 ---
 
 # commit
 
-Wrap up the current working-tree changes as a release on `master`: feature
-commit + version bump commit + push. Annai ships as a Claude Code plugin,
-so every user-visible change to the plugin gets a patch bump in
-`.claude-plugin/plugin.json`.
+Wrap up the current working-tree changes as a release on `master`: one
+commit that carries both the feature and the `.claude-plugin/plugin.json`
+bump, then push. Annai ships as a Claude Code plugin, so every
+user-visible change to the plugin gets a version bump.
 
 ## When to use
 
@@ -43,8 +43,8 @@ Skim the diff. Two questions to answer before committing:
    (look at the diff of the last `feat(frontend)` commit — did it touch
    the docs?). When in doubt, skip the doc update.
 
-If a doc update *is* warranted, make it now and include it in the feature
-commit (not the version bump commit).
+If a doc update *is* warranted, make it now and include it in the same
+commit as the feature.
 
 ### 2. Bump the version
 
@@ -55,12 +55,15 @@ explicitly asks or the change is large enough that they call it out.
 The app's `skills/review/scripts/app/package.json` version is intentionally
 **not** kept in lockstep — leave it alone unless the user says otherwise.
 
-### 3. Commit the feature
+### 3. Commit everything together
 
-Stage only the feature files (and any doc updates from step 1) — **not**
-`plugin.json`. Use the conventional-commits subject and a short body
-explaining the *why* (one paragraph max). Always include the co-author
-trailer from the user's global instructions:
+Stage the feature files, any doc updates from step 1, **and**
+`.claude-plugin/plugin.json` — all in one commit. Use the
+conventional-commits subject for the *feature* (not the bump, since the
+feature is the user-visible change). Body has a short paragraph
+explaining the *why*, then a final line `Bumps plugin version to
+<new-version>.` so the bump is discoverable in the message. Always
+include the co-author trailer from the user's global instructions:
 
 ```
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
@@ -68,26 +71,20 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 
 Pass the message via HEREDOC so newlines are preserved.
 
-### 4. Commit the version bump
+If the change is *only* a version bump (no feature), use a
+`chore: bump plugin version to <new-version>` subject instead — the
+commit type tracks the user-visible content, and a standalone bump is
+chore.
 
-Stage `.claude-plugin/plugin.json` and commit separately:
-
-```
-chore: bump plugin version to <new-version>
-```
-
-The two-commit split is the established style in this repo (see
-`f724bd2`, `e23a5b2`). Keep it.
-
-### 5. Push
+### 4. Push
 
 `git push` — to the tracked branch, no force, no `--no-verify`. If the
 push fails, surface the error to the user rather than retrying with
 flags.
 
-### 6. Report
+### 5. Report
 
-Brief summary back to the user: the two commit SHAs and what was pushed.
+Brief summary back to the user: the commit SHA and what was pushed.
 
 ## Notes
 
