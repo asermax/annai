@@ -577,6 +577,76 @@ These don't change the architecture shape — they're fillable as we build:
   stable and dogfooded on Tachikoma + Filadd PRs.
 - **Multiple concurrent sessions per host**: state files are per-session,
   so technically supported. No tests for it in v1.
+- **GitHub `suggestion` block support**: when submitting a line / range
+  draft, optionally wrap a code snippet in a fenced ```` ```suggestion ````
+  block so GitHub renders the native "Apply suggestion" / "Commit
+  suggestion" UI on the PR. Today `Suggestion.suggestionCode` only
+  surfaces in the browser as a labeled snippet inside the draft body —
+  the submitted comment is plain markdown. Two halves, independently
+  useful:
+  1. **Submit-side**: extend the draft wire shape (or the
+     `Suggestion` → draft promotion path) with an optional
+     `suggestionCode`, and have `cli/submit.ts` append a
+     `​```suggestion\n…\n```` block to the comment body when present.
+     `lineRange` must already match the lines being replaced (GitHub's
+     constraint).
+  2. **Agent-generated snippets**: a `surface suggestion-generate` op
+     (or an inline action in the line/range composer) where the agent
+     reads the draft body + the original lines and proposes the
+     replacement snippet to attach. Reviewer accepts / edits / drops
+     before submit. Pairs naturally with the ask-agent round-trip
+     deferred to v0.3 but doesn't strictly require it — could ship as
+     a synchronous CLI call first.
+- **Hidden HTML markers in submitted comments**: GitHub's markdown
+  pipeline preserves `<!-- … -->` blocks in PR comment / review-thread
+  bodies (rendered invisible, visible in raw source). Two related
+  uses:
+  1. **annai self-identification**: append a marker like
+     `<!-- annai:session=<id> draft=<id> -->` to every submitted body
+     so future runs can recognize annai-authored comments on the PR.
+     On its own this is just plumbing — the value lands in the
+     "load existing PR comments" idea below. Needs a one-line smoke
+     test that GitHub actually preserves the comments through its
+     sanitizer before building on it. Markers inside a
+     `​```suggestion​` fence get treated as code, so they have to
+     live in the prose part of the body.
+  2. **User-supplied agent-facing instructions**: a plugin-level env
+     var (e.g. `ANNAI_COMMENT_FOOTER`) whose contents get appended,
+     wrapped in `<!-- … -->`, to every submitted comment. Motivating
+     use case: the reviewer wants to leave a hidden note that any
+     coding agent later reading the PR comments should recognize this
+     as a human-authored review comment, surface it to the human, and
+     refuse to auto-fix it even if instructed to. Keeps the rendered
+     comment clean for human readers while propagating a signal to
+     downstream LLM tooling. Implementation is tiny — read env var in
+     `cli/submit.ts`, append the wrapped block — but worth designing
+     the marker shape alongside the self-identification one so they
+     compose (e.g. annai's own marker on the outer line, user
+     footer on a separate line) and don't collide.
+- **Load existing PR comments into the UI**: today the surface only
+  shows agent-generated annotations + the reviewer's in-progress
+  drafts. A natural next step is to fetch the PR's existing review
+  threads (`gh api` / GraphQL) at session start and render them on
+  the diff alongside agent annotations — so the reviewer sees prior
+  rounds of discussion in the same surface instead of bouncing to
+  the GitHub UI. Open shape questions:
+  - **Identity & dedupe**: which threads were authored by *this*
+     annai instance (via the self-identification marker above) vs.
+     by humans / other bots? Probably render them with distinct
+     styling, and allow the reviewer to mark their own previous
+     drafts as "still relevant" / "resolved" so a re-review session
+     doesn't double-submit.
+  - **Read vs. write**: v1 read-only (just display). Replying /
+     resolving threads from the surface is a follow-on that needs
+     additional GraphQL mutations and a thread-state model in
+     `session.ts`.
+  - **Outdated threads**: how to render comments anchored to lines
+     that no longer exist after a force-push or rebase. GitHub
+     already marks these "outdated" — surface them in a separate
+     bucket or hide behind a toggle.
+  - **Performance**: large PRs can have hundreds of threads —
+     fetch once at session start, cache in `session.json`, refresh
+     on demand rather than on every render.
 
 ### Resolved
 
