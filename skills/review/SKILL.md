@@ -58,31 +58,122 @@ use it. Otherwise ask **once**, short:
 context sources: Katachi specs, Notion pages, design docs, transcripts,
 GitHub issue threads, the PR body itself.
 
-### 3. Generate `surface.json`
+### 3. Build `surface.json`
 
-Follow the shape in `references/surface.schema.json`. The example at
-`references/surface-example.json` shows a concrete minimal surface — mimic
-its shape, not its content.
+You don't compose the surface by hand. `annai.sh surface ...` is a
+family of subcommands that build and edit it atomically — each one
+reads, validates, mutates, re-validates, and atomic-writes the file.
+That keeps hunks faithful to the PR (parser-generated, not
+LLM-written) and lets you edit a 100-file scaffold without touching
+the JSON directly.
+
+Reference: `references/surface-example.json` shows the final shape.
+You read it once to understand structure; you don't mimic it line by
+line.
+
+#### 3a. Scaffold
+
+Pick a short session id (e.g. `review-<pr-number>` or a 6-char
+nonce). The surface lives at
+`${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}/annai-$UID}/annai/sessions/<id>/surface.json`.
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/annai.sh" surface scaffold \
+  --pr <n> --repo <path> --out <session-dir>/surface.json
+```
+
+Fetches PR metadata via `gh pr view`, parses every file's hunks from
+`gh pr diff`, and writes a schema-valid skeleton: one `unsorted`
+supporting group containing every changed file, empty `tldr` /
+`reviewPrompts` / `diagrams`, empty `annotations` / `suggestions` per
+diff. Each diff gets a stable id like `diff-src-foo-ts` you'll
+reference in later commands.
+
+#### 3b. Author with scoped subcommands
+
+Don't edit hunks by hand — the scaffold has them right. Use the
+`surface` subcommand family for everything else. Free-form text
+(intro, annotation body, suggestion body, mermaid source) is passed
+via `--*-file <path>` so you can write multi-line markdown to a temp
+file with `Write` and reference it.
+
+```bash
+# Create the groups you've decided on. --before / --after control order.
+annai.sh surface group-add --surface <p> --id models --kind base-context \
+  --title "Data model" --intro-file /tmp/intro-models.md --before unsorted
+
+# Move diffs from `unsorted` into your groups.
+annai.sh surface diff-move --surface <p> --diff diff-src-models-user-ts \
+  --to-group models
+
+# Drop noise (lockfile churn, etc).
+annai.sh surface diff-drop --surface <p> --diff diff-package-lock-json
+
+# Annotate (highest volume). --kind ∈ pattern | note | question | surface-check | discrepancy.
+# --line-range references *new-file* line numbers from the scaffold's `newLine` values.
+annai.sh surface annotation-add --surface <p> \
+  --diff diff-src-handlers-create-ts \
+  --id ann-deferred-black-hole --kind question \
+  --title "Deferred branch is a black hole" \
+  --body-file /tmp/ann.md --line-range 142,158
+
+# Inline PR suggestions (Accept-as-draft in the browser).
+annai.sh surface suggestion-add --surface <p> --diff <id> --id sug-1 \
+  --body-file /tmp/sug.md --line-range 12,18 --code-file /tmp/sug-code.txt
+
+# Mermaid diagrams. --group <id> for group-scoped; omit for surface-level.
+annai.sh surface diagram-add --surface <p> --id flow \
+  --title "Submit flow" --source-file /tmp/flow.mmd --group entry
+```
+
+Drop-variants exist for every add: `group-drop`, `diff-drop`,
+`annotation-drop`, `suggestion-drop`, `diagram-drop`. Run
+`annai.sh surface` with no args to print the full list.
+
+#### 3c. Fill in `tldr` and `reviewPrompts` with `Edit`
+
+These are short — `tldr` is one string, `reviewPrompts` is a small
+array — so plain `Edit` on the JSON is simpler than a CLI helper.
+Leave them for last so you've already seen the whole diff.
+
+#### 3d. Validation contract
+
+Every `surface` subcommand validates with zod before writing. So
+does `annai.sh start`. On failure, stderr is:
+
+```
+annai: surface validation failed
+  <json-path>: <message>
+  <json-path>: <message>
+```
+
+— one issue per line, paths like `groups[0].diffs[1].annotations[0].kind`.
+Read each line, fix the cited field with the appropriate mutator
+(e.g. an unknown enum value on `groups[0].kind` → drop and re-add
+the group), and re-run. Don't `Edit` the JSON to silence the
+validator unless the failure is on `tldr` / `reviewPrompts`.
+
+#### 3e. Annotation/group/suggestion conventions
 
 Hard constraints:
 
-- **Hunks must reproduce the actual PR exactly.** No fictional diff lines.
-  Pull them from `gh pr diff` and convert into the typed `Hunk[]` shape
-  (header + lines with `kind`/`oldLine`/`newLine`/`content`).
-- **All annotations must be grounded** in the diff or the supplied context.
-  No speculation. If the doc says X and the code does Y, that's a
-  `discrepancy` annotation — surface it explicitly.
-- **Every annotation must teach.** Density is fine — narrative isn't.
-  Don't restate what the diff already shows or what an attentive reader
-  would catch in passing. Each annotation should answer one of: *why does
-  this exist*, *what's easy to miss*, *what should the reviewer verify*,
-  *what's inconsistent*. If you can't say which, cut it.
-- **Order for comprehension.** Group `kind` is one of `base-context`,
-  `entry-point`, `supporting`. Put base-context groups first **only when
-  load-bearing** (new abstractions, data models). Then entry points (HTTP
-  handlers, webhooks, background triggers, CLI commands — the points a
-  user or system *triggers*, not where code is *wired up*). Then supporting
-  code.
+- **Hunks reproduce the actual PR exactly.** The scaffold enforces
+  this structurally — don't override it with `Edit`.
+- **All annotations must be grounded** in the diff or the supplied
+  context. No speculation. If the doc says X and the code does Y,
+  that's a `discrepancy` annotation — surface it explicitly.
+- **Every annotation must teach.** Density is fine — narrative
+  isn't. Don't restate what the diff already shows or what an
+  attentive reader would catch in passing. Each annotation should
+  answer one of: *why does this exist*, *what's easy to miss*,
+  *what should the reviewer verify*, *what's inconsistent*. If you
+  can't say which, cut it.
+- **Order groups for comprehension.** `kind` is one of
+  `base-context`, `entry-point`, `supporting`. Put base-context
+  first **only when load-bearing** (new abstractions, data models).
+  Then entry points (HTTP handlers, webhooks, background triggers,
+  CLI commands — the points a user or system *triggers*, not where
+  code is *wired up*). Then supporting code.
 - **Annotation kinds.** Each kind names a different *job* the annotation
   does for the reviewer. Pick by intent, not by shape.
   - `pattern` — name a recurring shape so the reviewer can match it once
@@ -124,14 +215,6 @@ Hard constraints:
   sequence for API flows, state diagram for lifecycles, flowchart for
   branching logic. PR-level diagrams go on `surface.diagrams`; group-scoped
   diagrams go on the relevant group.
-
-Write the surface to the session dir before starting the daemon:
-
-```
-${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}/annai-$UID}/annai/sessions/<id>/surface.json
-```
-
-Pick a short session id (e.g. `review-<pr-number>` or a 6-char nonce).
 
 ### 4. Launch the session
 

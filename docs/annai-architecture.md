@@ -23,7 +23,7 @@ CLI surface, and skill responsibilities so implementation can start.
 
 | # | Decision | Choice |
 |---|---|---|
-| 1 | Scope | Plugin contains **both** the runtime (CLI + daemon + frontend) and the agent skill. The skill *generates* the surface JSON; the CLI/daemon *consumes* it and runs the interactive session. |
+| 1 | Scope | Plugin contains **both** the runtime (CLI + daemon + frontend) and the agent skill. The skill *authors* the surface JSON via the `annai.sh surface ...` CLI (scaffold + scoped mutators) and the CLI/daemon *consumes* it to run the interactive session. The agent never composes hunks or edits the JSON structure by hand. |
 | 2 | Slicing | The full vision splits into two slices: **v0.2** (this doc) = draft comments + decision + single-shot GitHub submission. **v0.3** = ask-agent threads (`agent-asked` event, `annai.sh reply`, inline thread UI). v0.2 ships the watch filter and event bus that v0.3 plugs into. |
 | 3 | Stack | **TypeScript** end-to-end. Frontend is **React + Vite**, diff rendering via **`@pierre/diffs`** (Apache-2.0). Tests via **vitest**. |
 | 4 | Event channel | `annai watch --session <id>` subcommand emitting **line-delimited JSON** on stdout. **Only events the agent must act on are emitted** — quiet by default so Monitor doesn't wake the agent on every browser keystroke. |
@@ -183,7 +183,16 @@ annai/
                 │   │   ├── status.ts
                 │   │   ├── result.ts
                 │   │   ├── stop.ts
-                │   │   └── sessions.ts
+                │   │   ├── sessions.ts
+                │   │   ├── submit.ts
+                │   │   ├── surface.ts            # sub-dispatcher for `surface <op>`
+                │   │   └── surface/              # one file per surface op
+                │   │       ├── scaffold.ts      # gh pr view + gh pr diff → skeleton
+                │   │       ├── group-add.ts / group-drop.ts
+                │   │       ├── diff-move.ts  / diff-drop.ts
+                │   │       ├── annotation-add.ts / annotation-drop.ts
+                │   │       ├── suggestion-add.ts / suggestion-drop.ts
+                │   │       └── diagram-add.ts   / diagram-drop.ts
                 │   ├── daemon/
                 │   │   ├── daemon.ts # process entry
                 │   │   ├── session.ts # state + persistence
@@ -193,7 +202,10 @@ annai/
                 │   ├── shared/      # types shared across daemon, CLI, frontend
                 │   │   ├── surface.ts
                 │   │   ├── events.ts
-                │   │   └── result.ts
+                │   │   ├── result.ts
+                │   │   ├── diff-parser.ts        # unified diff → Hunk[]
+                │   │   ├── surface-mutators.ts   # pure per-op mutators
+                │   │   └── surface-io.ts         # load → validate → mutate → atomic write
                 │   └── frontend/    # React app
                 │       ├── main.tsx
                 │       ├── App.tsx
@@ -241,6 +253,42 @@ via `tsc` into `dist/`. One package, two build pipelines, one shipped artifact.
 | `annai.sh submit --session <id>` | Fetch the result, run the three GraphQL mutations against GitHub, print the resulting review URL. | Agent (after `review-submitted`) |
 | `annai.sh stop --session <id>` | Graceful daemon shutdown. | Agent (cleanup) |
 | `annai.sh sessions` | List active and recent sessions. | Agent or user |
+| `annai.sh surface <op> …` | Author `surface.json` via scoped atomic ops (scaffold + mutators). See below. | Agent (before `start`) |
+
+### Surface authoring CLI (`annai.sh surface ...`)
+
+The agent never composes `surface.json` directly — large JSON edits
+re-introduce the same hand-rolled-hunk failure mode the typed
+schema was meant to prevent. Instead, every authoring action is a
+scoped subcommand: read → zod-validate → mutate → re-validate →
+atomic write back. Free-form text (intro, annotation body, mermaid
+source) is read from `--*-file <path>` to keep multi-line markdown
+off the command line.
+
+| Sub-op | Role |
+|---|---|
+| `surface scaffold --pr <n> --repo <path> [--out <file>] [--diff <file>] [--meta <file>]` | Resolve PR meta (`gh pr view`) + unified diff (`gh pr diff`), parse hunks via `src/shared/diff-parser.ts`, emit a schema-valid skeleton (one `unsorted` supporting group, every changed file present, empty annotations / suggestions / `tldr` / `reviewPrompts`). `--diff` / `--meta` bypass `gh` for tests. |
+| `surface group-add --id <id> --kind <kind> --title <t> [--intro-file <f>] [--before <id> \| --after <id>]` | Create a new group. Ordering controls where it lands. |
+| `surface group-drop --id <id>` | Remove an empty group (refuses if it still has diffs). |
+| `surface diff-move --diff <id> --to-group <id> [--position <n>]` | Move a parsed-file diff between groups. The agent uses this to regroup files out of `unsorted` after the scaffold. |
+| `surface diff-drop --diff <id>` | Remove a file from the surface entirely (lockfile churn, etc.). |
+| `surface annotation-add --diff <id> --id <ann-id> --kind <k> --title <t> --body-file <f> --line-range <s>,<e>` | Append an annotation. `--line-range` is new-file numbers (from the scaffold's `newLine`). |
+| `surface annotation-drop --diff <id> --id <ann-id>` | Remove an annotation. |
+| `surface suggestion-add --diff <id> --id <s-id> --body-file <f> --line-range <s>,<e> [--code-file <f>]` | Append an inline suggestion (renders as Accept-as-draft in the browser). |
+| `surface suggestion-drop --diff <id> --id <s-id>` | Remove a suggestion. |
+| `surface diagram-add --id <id> --source-file <f> [--title <t>] [--group <g>]` | Append a mermaid diagram. Omit `--group` for surface-level. |
+| `surface diagram-drop --id <id> [--group <g>]` | Remove a diagram. |
+
+All subcommands take `--surface <path>` (default `./surface.json`).
+Validation failures are emitted to stderr as one zod issue per line
+in the form `  <json-path>: <message>` so the agent can fix specific
+fields directly. The same formatter runs for `annai.sh start`'s
+load-time validation.
+
+Low-volume top-level fields (`tldr`, `reviewPrompts`) have no
+dedicated mutator — the skill edits them with plain `Edit`. The
+mutator surface exists for operations whose volume scales with PR
+size; one-shot string fields don't justify CLI ceremony.
 
 Session state location:
 

@@ -22,8 +22,12 @@ the runtime design lives in [`docs/annai-architecture.md`](./docs/annai-architec
 
 What works:
 
-- The `review` skill walks the agent through generating `surface.json`
-  from a PR + arbitrary context.
+- The `review` skill drives `annai.sh surface ...` to author the
+  review: `surface scaffold` parses the PR diff into a typed,
+  schema-valid skeleton; `group-add` / `diff-move` / `annotation-add`
+  / `suggestion-add` / `diagram-add` (and their `-drop` pairs)
+  mutate it atomically with zod validation on every write. The
+  agent never composes hunks or edits the JSON structure by hand.
 - A local daemon serves a React frontend (diff rendering via
   `@pierre/diffs`, diagrams via `mermaid`).
 - **Drafting comments** inline on a line, on a multi-line range, on a
@@ -69,8 +73,10 @@ The skill will:
    ambiguous.
 2. Ask once for context (Notion pages, design docs, transcripts,
    anything — or `'none'` to proceed with just the diff).
-3. Generate `surface.json` grounded in the diff and the supplied
-   context.
+3. Scaffold `surface.json` from the PR (`annai.sh surface scaffold`
+   parses every hunk for you), then regroup files and attach
+   annotations / suggestions / diagrams via the `surface` subcommand
+   family — grounded in the diff and the supplied context.
 4. Start the local server, open your browser, and tell you the URL.
 5. Watch for the events the reviewer triggers in the browser: drafting
    line / range / file / PR comments, accepting or dismissing
@@ -128,6 +134,14 @@ Manual smoke against the bundled example surface:
   --session smoke1
 # → opens the browser at http://127.0.0.1:<port>/
 ./skills/review/scripts/annai.sh stop --session smoke1
+```
+
+Smoke the surface-authoring CLI against a real PR:
+
+```sh
+./skills/review/scripts/annai.sh surface scaffold \
+  --pr <n> --repo . --out /tmp/surface.json
+./skills/review/scripts/annai.sh surface          # full sub-op list
 ```
 
 More dev notes — layout, key invariants, dogfood targets — live in

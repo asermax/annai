@@ -16,7 +16,11 @@ v04 is the latest.
 v0.2 adds **draft comments + single-shot GitHub review submission** on top
 of v0.1's read-only surface:
 
-- The skill generates `surface.json` (unchanged from v0.1).
+- The skill builds `surface.json` via the `annai.sh surface ...`
+  CLI — `scaffold` produces a hunks-parsed skeleton; `group-add` /
+  `diff-move` / `annotation-add` / `suggestion-add` / `diagram-add`
+  (and their `-drop` pairs) mutate it atomically with zod validation
+  on every write. The agent does not edit hunks / structure by hand.
 - The daemon serves the React frontend, exposes `GET /api/surface`, and
   hosts the draft API: `GET /api/state`, `POST/PATCH/DELETE /api/drafts`,
   `PUT /api/pr-body`, `POST /api/submit`, `POST /api/dismiss`.
@@ -54,7 +58,10 @@ The interactive subcommands `watch`, `result`, and `submit` are real.
 - `skills/review/scripts/app/` — node + react project.
   - `src/cli.ts` + `src/cli/*` — subcommand router and handlers.
     `cli/submit.ts` builds the GraphQL bodies and shells out to
-    `gh api graphql`.
+    `gh api graphql`. `cli/surface.ts` + `cli/surface/*` is the
+    surface-authoring family (`scaffold`, `group-add`, `diff-move`,
+    `annotation-add`, …) the skill drives instead of editing
+    `surface.json` directly.
   - `src/daemon/*` — daemon process: `daemon.ts` (entry), `session.ts`
     (state + atomic checkpoint + draft mutators + `buildResult`), `ipc.ts`
     (length-prefixed JSON over unix socket), `events.ts` (typed event bus
@@ -65,7 +72,11 @@ The interactive subcommands `watch`, `result`, and `submit` are real.
     frontend. `drafts.ts` defines the `Draft` discriminated union (line /
     range / file) and the wire shape for the draft API; `result.ts`
     defines `Result` written to result.json; `session-state.ts` is the
-    `GET /api/state` shape.
+    `GET /api/state` shape. `diff-parser.ts` turns unified-diff text
+    into typed `Hunk[]` (used by `surface scaffold`);
+    `surface-mutators.ts` holds the pure per-op functions every
+    surface mutator handler calls; `surface-io.ts` wraps them in
+    read → validate → mutate → re-validate → atomic-write.
   - `src/frontend/*` — React 19 + Vite app, served at `/` by the daemon.
     `state/drafts.tsx` is the central React context (reducer + API
     wrappers). `components/{DraftComposer,DraftDisplay,FileLevelComments,
@@ -96,6 +107,20 @@ Manual smoke from the repo root:
 ./skills/review/scripts/annai.sh status   --session smoke1
 ./skills/review/scripts/annai.sh sessions
 ./skills/review/scripts/annai.sh stop     --session smoke1
+```
+
+Smoke the surface-authoring CLI against a real PR (uses `gh pr view`
++ `gh pr diff` under the hood; `--diff` / `--meta` escape hatches
+let tests bypass `gh`):
+
+```sh
+./skills/review/scripts/annai.sh surface scaffold \
+  --pr <n> --repo . --out /tmp/surface.json
+./skills/review/scripts/annai.sh surface group-add \
+  --surface /tmp/surface.json --id entry --kind entry-point --title "Entry"
+./skills/review/scripts/annai.sh surface diff-move \
+  --surface /tmp/surface.json --diff <diff-id> --to-group entry
+./skills/review/scripts/annai.sh surface          # full sub-op list
 ```
 
 The agent never speaks HTTP — only via `annai.sh` subcommands.
