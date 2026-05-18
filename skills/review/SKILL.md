@@ -1,6 +1,7 @@
 ---
 name: review
 description: NEVER INVOKE THIS SKILL DIRECTLY; USE `/annai:review-pr` to review a GitHub pull request, or `/annai:review-local` to review code an agent just produced locally. This file is the shared base that the two leaf skills load — it owns the surface-authoring rules, launch + watch + react loop, schema-validation contract, and cleanup. It is not a standalone entry point.
+user-invocable: false
 ---
 
 # Annai review (shared base)

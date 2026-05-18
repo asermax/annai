@@ -1,6 +1,6 @@
 {
   "name": "annai",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Code review surface: agent skill generates a guided JSON view of a GitHub PR or a local agent change, local server renders it in the browser. Two leaf skills (review-pr, review-local) share a base skill.",
   "author": {
     "name": "Agustin Carrasco"
