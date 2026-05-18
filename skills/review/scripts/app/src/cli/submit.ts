@@ -123,7 +123,13 @@ export const runSubmit = async (argv: string[]): Promise<void> => {
 
   // 2. resolve PR owner/repo/number from the surface
   const surface = surfaceSchema.parse(JSON.parse(readFileSync(paths.surface, 'utf8')))
-  const prRef = parsePrUrl(surface.pr.url)
+  if (surface.subject.kind !== 'pr') {
+    throw new Error(
+      `submit: this session is a local-agent review (subject.kind="${surface.subject.kind}"). `
+      + 'No GitHub PR to push to — use `annai.sh result --session <id>` to read the feedback locally.',
+    )
+  }
+  const prRef = parsePrUrl(surface.subject.url)
 
   // 3. fetch PR node id + head commit oid
   const prInfo = await fetchPrNodeInfo(prRef)

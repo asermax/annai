@@ -20,7 +20,7 @@ const fileDraft = {
   id: 'f1', kind: 'file', path: 'src/foo.ts', body: 'whole file', createdAt: 'now', updatedAt: 'now',
 }
 
-const renderWith = (initialState: unknown): ReturnType<typeof render> => {
+const renderWith = (initialState: unknown, subjectKind: 'pr' | 'local' = 'pr'): ReturnType<typeof render> => {
   const fetchMock = vi.fn()
   fetchMock.mockImplementation(async (url: string, opts?: RequestInit) => {
     const method = (opts?.method ?? 'GET').toUpperCase()
@@ -32,8 +32,8 @@ const renderWith = (initialState: unknown): ReturnType<typeof render> => {
 
   return render(
     <DraftsProvider>
-      <SubmitBar />
-      <ConfirmReviewModal />
+      <SubmitBar subjectKind={subjectKind} />
+      <ConfirmReviewModal subjectKind={subjectKind} />
     </DraftsProvider>,
   )
 }
@@ -91,5 +91,23 @@ describe('<ConfirmReviewModal>', () => {
     expect(screen.getByText('just an overall thought')).toBeInTheDocument()
     expect(screen.queryByText(/nothing to submit/i)).toBeNull()
     expect(screen.getByRole('button', { name: /confirm/i })).toBeEnabled()
+  })
+
+  it('Local mode: SubmitBar drops Approve and relabels Comment → Finish review', async () => {
+    renderWith(stateWith([lineDraft], ''), 'local')
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /finish review/i })).toBeEnabled())
+    expect(screen.queryByRole('button', { name: /^approve$/i })).toBeNull()
+  })
+
+  it('Local mode: modal title and hint are agent-flavored', async () => {
+    renderWith(stateWith([lineDraft], ''), 'local')
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /finish review/i })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: /finish review/i }))
+
+    expect(screen.getByText('Save your feedback?')).toBeInTheDocument()
+    expect(screen.getByText(/the agent will read this/i)).toBeInTheDocument()
+    expect(screen.queryByText(/your review on github/i)).toBeNull()
   })
 })

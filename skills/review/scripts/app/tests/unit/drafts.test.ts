@@ -8,7 +8,8 @@ import { Session } from '../../src/daemon/session.ts'
 import type { Surface } from '../../src/shared/surface.ts'
 
 const minimalSurface: Surface = {
-  pr: {
+  subject: {
+    kind: 'pr',
     url: 'https://github.com/x/y/pull/1',
     title: 't',
     number: 1,

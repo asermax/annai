@@ -11,14 +11,14 @@ import {
 const USAGE = `usage: annai.sh surface show [--diff <id> | --group <id>] [--text] [--surface <p>]
 
 Read-only introspection.
-  no scope flags         JSON overview: pr + tldr + per-group counts + diagrams + reviewPrompts.
+  no scope flags         JSON overview: subject + tldr + per-group counts + diagrams + reviewPrompts.
   --group <id>           group details + per-diff counts.
   --diff <id>            hunks rendered with newLine numbers + that diff's annotations and suggestions.
   --text                 human-readable formatting instead of JSON.
 `
 
 const overview = (s: Surface) => ({
-  pr: s.pr,
+  subject: s.subject,
   tldr: s.tldr,
   repo: s.repo,
   groups: s.groups.map(g => ({
@@ -69,7 +69,11 @@ const diffDetail = (d: Diff) => ({
 
 const printOverviewText = (s: Surface): void => {
   const data = overview(s)
-  process.stdout.write(`PR #${data.pr.number} — ${data.pr.title}\n`)
+  if (data.subject.kind === 'pr') {
+    process.stdout.write(`PR #${data.subject.number} — ${data.subject.title}\n`)
+  } else {
+    process.stdout.write(`Local change — ${data.subject.title} (${data.subject.branch} vs ${data.subject.baseRef})\n`)
+  }
   if (data.tldr.length > 0) process.stdout.write(`tldr: ${data.tldr}\n`)
   process.stdout.write(`groups (${data.groups.length}):\n`)
   for (const g of data.groups) {

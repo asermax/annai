@@ -28,6 +28,7 @@ const topLevel: Array<[string, (argv: string[]) => Promise<void>]> = [
 
 const surfaceOps = [
   'scaffold',
+  'scaffold-local',
   'group-add', 'group-update', 'group-drop',
   'diff-move', 'diff-drop',
   'annotation-add', 'annotation-update', 'annotation-drop',

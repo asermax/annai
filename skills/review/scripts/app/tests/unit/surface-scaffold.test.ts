@@ -34,7 +34,8 @@ describe('buildScaffold', () => {
   it('produces a schema-valid surface with one unsorted group containing every changed file', () => {
     const surface = buildScaffold(meta, sampleDiff, '/some/repo')
 
-    expect(surface.pr).toEqual({
+    expect(surface.subject).toEqual({
+      kind: 'pr',
       url: 'https://github.com/x/y/pull/42',
       title: 'Test PR',
       number: 42,

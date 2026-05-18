@@ -4,62 +4,103 @@
     "Surface": {
       "type": "object",
       "properties": {
-        "pr": {
-          "type": "object",
-          "properties": {
-            "url": {
-              "type": "string",
-              "format": "uri"
-            },
-            "title": {
-              "type": "string",
-              "minLength": 1
-            },
-            "number": {
-              "type": "integer",
-              "exclusiveMinimum": 0
-            },
-            "branch": {
-              "type": "string",
-              "minLength": 1
-            },
-            "baseBranch": {
-              "type": "string",
-              "minLength": 1
-            },
-            "stats": {
+        "subject": {
+          "anyOf": [
+            {
               "type": "object",
               "properties": {
-                "additions": {
-                  "type": "integer",
-                  "minimum": 0
+                "kind": {
+                  "type": "string",
+                  "const": "pr"
                 },
-                "deletions": {
-                  "type": "integer",
-                  "minimum": 0
+                "url": {
+                  "type": "string",
+                  "format": "uri"
                 },
-                "files": {
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "number": {
                   "type": "integer",
-                  "minimum": 0
+                  "exclusiveMinimum": 0
+                },
+                "branch": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "baseBranch": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "stats": {
+                  "type": "object",
+                  "properties": {
+                    "additions": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "deletions": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "files": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "additions",
+                    "deletions",
+                    "files"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [
-                "additions",
-                "deletions",
-                "files"
+                "kind",
+                "url",
+                "title",
+                "number",
+                "branch",
+                "baseBranch",
+                "stats"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "local"
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "branch": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "baseRef": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "stats": {
+                  "$ref": "#/definitions/Surface/properties/subject/anyOf/0/properties/stats"
+                }
+              },
+              "required": [
+                "kind",
+                "title",
+                "branch",
+                "baseRef",
+                "stats"
               ],
               "additionalProperties": false
             }
-          },
-          "required": [
-            "url",
-            "title",
-            "number",
-            "branch",
-            "baseBranch",
-            "stats"
-          ],
-          "additionalProperties": false
+          ]
         },
         "tldr": {
           "type": "string"
@@ -314,7 +355,7 @@
         }
       },
       "required": [
-        "pr",
+        "subject",
         "tldr",
         "repo",
         "groups"

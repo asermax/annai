@@ -1,6 +1,10 @@
 import { useDrafts } from '../state/drafts.tsx'
 
-export const SubmitBar = () => {
+interface Props {
+  subjectKind: 'pr' | 'local'
+}
+
+export const SubmitBar = ({ subjectKind }: Props) => {
   const {
     drafts,
     submitting,
@@ -25,20 +29,22 @@ export const SubmitBar = () => {
       </button>
       <button
         type="button"
-        className="comment"
+        className={subjectKind === 'local' ? 'comment primary' : 'comment'}
         onClick={() => openConfirmReview('comment')}
         disabled={submitting}
       >
-        Comment
+        {subjectKind === 'local' ? 'Finish review' : 'Comment'}
       </button>
-      <button
-        type="button"
-        className="approve primary"
-        onClick={() => openConfirmReview('approve')}
-        disabled={submitting}
-      >
-        Approve
-      </button>
+      {subjectKind === 'pr' ? (
+        <button
+          type="button"
+          className="approve primary"
+          onClick={() => openConfirmReview('approve')}
+          disabled={submitting}
+        >
+          Approve
+        </button>
+      ) : null}
     </div>
   )
 }

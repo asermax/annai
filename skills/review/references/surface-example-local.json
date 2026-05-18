@@ -1,0 +1,87 @@
+{
+  "subject": {
+    "kind": "local",
+    "title": "Agent draft: verify JWT signature on incoming webhooks",
+    "branch": "work/jwt-webhook-guard",
+    "baseRef": "HEAD",
+    "stats": {
+      "additions": 18,
+      "deletions": 2,
+      "files": 1
+    }
+  },
+  "tldr": "Agent draft. Adds a JWT signature check at the top of the webhook handler before any DB work. The shared secret comes from `process.env.WEBHOOK_SECRET`. Unsigned or mis-signed requests get a 401 with no body.",
+  "repo": {
+    "path": "~/workspace/example-org/example-app"
+  },
+  "groups": [
+    {
+      "id": "entry",
+      "title": "Entry: webhook handler",
+      "kind": "entry-point",
+      "intro": "Single hot path. The new guard runs before everything else in the handler, so anything past the check can keep assuming the request is signed.",
+      "diffs": [
+        {
+          "id": "diff-src-handlers-webhook-ts",
+          "path": "src/handlers/webhook.ts",
+          "hunks": [
+            {
+              "header": "@@ -1,8 +1,24 @@",
+              "lines": [
+                { "kind": "context", "oldLine": 1, "newLine": 1, "content": "import type { Request, Response } from 'express'" },
+                { "kind": "add", "oldLine": null, "newLine": 2, "content": "import { createHmac, timingSafeEqual } from 'node:crypto'" },
+                { "kind": "context", "oldLine": 2, "newLine": 3, "content": "" },
+                { "kind": "context", "oldLine": 3, "newLine": 4, "content": "import { db } from '../db.ts'" },
+                { "kind": "context", "oldLine": 4, "newLine": 5, "content": "" },
+                { "kind": "add", "oldLine": null, "newLine": 6, "content": "const verifySignature = (req: Request): boolean => {" },
+                { "kind": "add", "oldLine": null, "newLine": 7, "content": "  const provided = req.header('x-signature')" },
+                { "kind": "add", "oldLine": null, "newLine": 8, "content": "  if (provided == null) return false" },
+                { "kind": "add", "oldLine": null, "newLine": 9, "content": "  const expected = createHmac('sha256', process.env.WEBHOOK_SECRET ?? '')" },
+                { "kind": "add", "oldLine": null, "newLine": 10, "content": "    .update(JSON.stringify(req.body))" },
+                { "kind": "add", "oldLine": null, "newLine": 11, "content": "    .digest('hex')" },
+                { "kind": "add", "oldLine": null, "newLine": 12, "content": "  return timingSafeEqual(Buffer.from(provided), Buffer.from(expected))" },
+                { "kind": "add", "oldLine": null, "newLine": 13, "content": "}" },
+                { "kind": "add", "oldLine": null, "newLine": 14, "content": "" },
+                { "kind": "context", "oldLine": 5, "newLine": 15, "content": "export const handleWebhook = async (req: Request, res: Response) => {" },
+                { "kind": "add", "oldLine": null, "newLine": 16, "content": "  if (!verifySignature(req)) return res.status(401).end()" },
+                { "kind": "add", "oldLine": null, "newLine": 17, "content": "" },
+                { "kind": "context", "oldLine": 6, "newLine": 18, "content": "  const event = await db.events.create({ payload: req.body })" },
+                { "kind": "context", "oldLine": 7, "newLine": 19, "content": "  return res.status(202).json({ id: event.id })" },
+                { "kind": "context", "oldLine": 8, "newLine": 20, "content": "}" }
+              ]
+            }
+          ],
+          "annotations": [
+            {
+              "id": "ann-empty-secret-fallback",
+              "kind": "question",
+              "title": "Missing `WEBHOOK_SECRET` silently accepts a known HMAC",
+              "body": "If `WEBHOOK_SECRET` is unset, `createHmac('sha256', '')` still produces a deterministic digest. A caller who knows the empty-secret HMAC of their payload could forge a request. Probably want to fail closed (throw on startup, or 503 here) instead of leaking that path.",
+              "lineRange": [9, 12]
+            },
+            {
+              "id": "ann-body-shape-assumption",
+              "kind": "note",
+              "title": "Signature covers stringified body, not raw bytes",
+              "body": "The verifier signs `JSON.stringify(req.body)` — whatever Express already parsed. Senders that include insignificant whitespace or key-ordering differences will fail signature, even when the parsed value matches. If we control both ends that's fine; flagging in case we don't.",
+              "lineRange": [10, 10]
+            }
+          ],
+          "suggestions": [
+            {
+              "id": "sugg-fail-on-missing-secret",
+              "body": "Refuse to start if the secret is missing, instead of accepting empty-secret HMACs at request time.",
+              "lineRange": [9, 9],
+              "suggestionCode": "  const secret = process.env.WEBHOOK_SECRET\n  if (secret == null || secret.length === 0) throw new Error('WEBHOOK_SECRET is required')\n  const expected = createHmac('sha256', secret)"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "diagrams": [],
+  "reviewPrompts": [
+    "Is the empty-secret fallback acceptable, or should the process refuse to start without WEBHOOK_SECRET?",
+    "Does the signature scheme need to cover raw request bytes rather than the parsed body?"
+  ]
+}

@@ -1,11 +1,10 @@
 import { readFileSync, statSync, writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { spawn } from 'node:child_process'
 
-import { parseUnifiedDiff } from '../../shared/diff-parser.ts'
-import { surfaceSchema, type Diff, type Surface } from '../../shared/surface.ts'
+import type { PrSubject, Surface } from '../../shared/surface.ts'
 import { emitResult, wantsHelp } from '../output.ts'
 import type { OutputMode } from '../output.ts'
+import { buildSurfaceFromDiffs, parseDiffsFromText } from './scaffold-build.ts'
 
 const USAGE = `usage: annai.sh surface scaffold --pr <n> --repo <path | OWNER/REPO> [--out <file>] [--diff <file>] [--meta <file>] [--json | --quiet]
 
@@ -67,68 +66,24 @@ interface PRViewJson {
   changedFiles: number
 }
 
-const slugify = (path: string): string => {
-  const s = path.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase()
-  return s.length > 0 ? s : 'file'
-}
-
-const uniqueDiffId = (path: string, taken: Set<string>): string => {
-  const base = `diff-${slugify(path)}`
-  if (!taken.has(base)) {
-    taken.add(base)
-    return base
-  }
-  for (let n = 2; ; n++) {
-    const candidate = `${base}-${n}`
-    if (!taken.has(candidate)) {
-      taken.add(candidate)
-      return candidate
-    }
-  }
-}
-
 export const buildScaffold = (meta: PRViewJson, diffText: string, repoPath: string): Surface => {
-  const files = parseUnifiedDiff(diffText)
+  const diffs = parseDiffsFromText(diffText)
 
-  const takenIds = new Set<string>()
-  const diffs: Diff[] = files.map(f => ({
-    id: uniqueDiffId(f.path, takenIds),
-    path: f.path,
-    hunks: f.hunks,
-    annotations: [],
-    suggestions: [],
-  }))
-
-  const surface: Surface = {
-    pr: {
-      url: meta.url,
-      title: meta.title,
-      number: meta.number,
-      branch: meta.headRefName,
-      baseBranch: meta.baseRefName,
-      stats: {
-        additions: meta.additions,
-        deletions: meta.deletions,
-        files: meta.changedFiles,
-      },
+  const subject: PrSubject = {
+    kind: 'pr',
+    url: meta.url,
+    title: meta.title,
+    number: meta.number,
+    branch: meta.headRefName,
+    baseBranch: meta.baseRefName,
+    stats: {
+      additions: meta.additions,
+      deletions: meta.deletions,
+      files: meta.changedFiles,
     },
-    tldr: '',
-    repo: { path: resolve(repoPath) },
-    groups: [
-      {
-        id: 'unsorted',
-        kind: 'supporting',
-        title: '(unsorted — regroup me)',
-        intro: '',
-        diffs,
-      },
-    ],
-    diagrams: [],
-    reviewPrompts: [],
   }
 
-  // Catch parser/scaffolder regressions before emitting.
-  return surfaceSchema.parse(surface)
+  return buildSurfaceFromDiffs(subject, diffs, repoPath)
 }
 
 interface GhProcessOptions {

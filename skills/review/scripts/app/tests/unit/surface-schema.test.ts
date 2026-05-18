@@ -14,8 +14,34 @@ describe('surfaceSchema', () => {
   it('accepts the bundled example surface', () => {
     const example = loadExample()
     const parsed = surfaceSchema.parse(example)
-    expect(parsed.pr.number).toBeGreaterThan(0)
+    expect(parsed.subject.kind).toBe('pr')
+    if (parsed.subject.kind === 'pr') {
+      expect(parsed.subject.number).toBeGreaterThan(0)
+    }
     expect(parsed.groups.length).toBeGreaterThan(0)
+  })
+
+  it('accepts a local-subject surface', () => {
+    const local = {
+      subject: {
+        kind: 'local',
+        title: 'Agent draft',
+        branch: 'work/x',
+        baseRef: 'HEAD',
+        stats: { additions: 1, deletions: 0, files: 1 },
+      },
+      tldr: '',
+      repo: { path: '.' },
+      groups: [],
+    }
+    const parsed = surfaceSchema.parse(local)
+    expect(parsed.subject.kind).toBe('local')
+  })
+
+  it('rejects an unknown subject kind', () => {
+    const example = loadExample() as { subject: { kind: string } }
+    example.subject.kind = 'not-a-real-kind'
+    expect(() => surfaceSchema.parse(example)).toThrow()
   })
 
   it('rejects an unknown annotation kind', () => {

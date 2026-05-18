@@ -75,21 +75,37 @@ export const groupSchema = z.object({
   diffs: z.array(diffSchema),
 })
 
-export const prMetaSchema = z.object({
+const subjectStatsSchema = z.object({
+  additions: z.number().int().nonnegative(),
+  deletions: z.number().int().nonnegative(),
+  files: z.number().int().nonnegative(),
+})
+
+export const prSubjectSchema = z.object({
+  kind: z.literal('pr'),
   url: z.string().url(),
   title: z.string().min(1),
   number: z.number().int().positive(),
   branch: z.string().min(1),
   baseBranch: z.string().min(1),
-  stats: z.object({
-    additions: z.number().int().nonnegative(),
-    deletions: z.number().int().nonnegative(),
-    files: z.number().int().nonnegative(),
-  }),
+  stats: subjectStatsSchema,
 })
 
+export const localSubjectSchema = z.object({
+  kind: z.literal('local'),
+  title: z.string().min(1),
+  branch: z.string().min(1),
+  baseRef: z.string().min(1),
+  stats: subjectStatsSchema,
+})
+
+export const subjectSchema = z.discriminatedUnion('kind', [
+  prSubjectSchema,
+  localSubjectSchema,
+])
+
 export const surfaceSchema = z.object({
-  pr: prMetaSchema,
+  subject: subjectSchema,
   tldr: z.string(),
   repo: z.object({
     path: z.string().min(1),
@@ -106,5 +122,7 @@ export type Suggestion = z.infer<typeof suggestionSchema>
 export type MermaidDiagram = z.infer<typeof mermaidDiagramSchema>
 export type Diff = z.infer<typeof diffSchema>
 export type Group = z.infer<typeof groupSchema>
-export type PRMeta = z.infer<typeof prMetaSchema>
+export type PrSubject = z.infer<typeof prSubjectSchema>
+export type LocalSubject = z.infer<typeof localSubjectSchema>
+export type Subject = z.infer<typeof subjectSchema>
 export type Surface = z.infer<typeof surfaceSchema>

@@ -1,111 +1,86 @@
 # Annai
 
 Claude Code plugin that turns a code review into a guided browser surface.
-A `review` skill walks the agent through generating a structured JSON view
-of a pull request — base context first, then entry points, then supporting
-code, with typed side notes and inline suggestions — and a local daemon
-serves it in the browser via `@pierre/diffs` + mermaid.
+Two leaf skills — `review-pr` (review a GitHub PR) and `review-local`
+(review code an agent just produced locally) — share a base `review`
+skill that owns the surface-authoring rules, launch/watch/react loop,
+and the `annai.sh` CLI. Each leaf is a thin entry point that points at a
+mode-specific reference under `skills/review/references/`. A local
+daemon serves the surface in the browser via `@pierre/diffs` + mermaid.
 
 The conceptual case lives in [docs/code-review-surface.md](docs/code-review-surface.md);
 the full runtime design lives in [docs/annai-architecture.md](docs/annai-architecture.md).
 HTML prototypes (`docs/prototype-v0?.html`) show the target visual shape —
 v04 is the latest.
 
-## Current scope (v0.3.4)
+## Current scope (v0.4)
 
-v0.3.x builds on v0.2's drafts + submit flow. v0.3.1 fixed a blank-page
-bug and shipped surface-authoring CLI; v0.3.2–v0.3.4 are UX polish on
-the rendered surface.
+v0.4 splits the single PR-centric `review` skill into three: a base
+skill that owns the shared procedure and the `annai.sh` CLI, plus two
+leaf skills — `review-pr` and `review-local` — that contribute only
+the mode-specific deltas.
 
-**Bug fix (v0.3.1):** the `@pierre/diffs` v1.1.22 `InteractionManager`
-forbids combining `onGutterUtilityClick` with `renderGutterUtility`.
-v0.3.0 shipped both, which left the page blank as soon as a surface
-had any annotations. v0.3.1 keeps only the imperative click handler
-(which is what carries the `SelectedLineRange` we need for line/range
-drafts).
+**Schema (breaking):** `surface.pr` is gone. `surface.subject` is now a
+discriminated union — `{ kind: 'pr', url, title, number, branch,
+baseBranch, stats }` or `{ kind: 'local', title, branch, baseRef, stats
+}`. Old surface.json files with the `pr` field will fail validation.
 
-**Surface authoring CLI (v0.3.1 additions):**
+**Local-agent mode:**
 
-- `*-update` verbs for every authored object: `group-update`,
-  `annotation-update`, `suggestion-update`, `diagram-update`. Every
-  field is optional; only what you pass is changed.
-- `set-tldr` / `set-review-prompts` setters (the architecture doc
-  previously said to plain-`Edit` these; the skill now uses the CLI).
-- `surface validate [--strict]` re-runs zod against the file.
-- `surface show [--diff <id> | --group <id>] [--text]` is the
-  introspection the agent uses to find usable `--line-range` values
-  before annotating.
-- `surface scaffold --repo` accepts a local clone path **or**
-  `OWNER/REPO` slug. A directory resolves via `gh repo view --json
-  nameWithOwner` inside it.
-- Every surface op prints a one-line success summary by default,
-  supports `--json` for parseable output, `--quiet` for none, and
-  `--help` per-op.
-- `diagram-add` / `diagram-update` parse the mermaid source with the
-  bundled renderer; pass `--skip-validate` to bypass.
+- `annai.sh surface scaffold-local --repo <path> --diff <file> --title
+  "<phrase>" [--branch <name>] [--base-ref <spec>] [--out <file>]` —
+  parses the unified diff the agent produced (via `git diff` it ran
+  itself), packs every changed file into the `unsorted` group, fills
+  `subject: { kind: 'local', ... }` with stats derived from the parsed
+  hunks. Does not shell out to `gh`.
+- The reviewer's terminus is `annai.sh result --session <id>` — dumps
+  `result.json` for the agent to read back. `annai.sh submit` refuses
+  with a "use `result` instead" message if the subject isn't a PR.
+- Frontend: the SubmitBar drops the **Approve** button (no remote to
+  approve against) and relabels **Comment** → **Finish review**. The
+  ConfirmReviewModal title becomes "Save your feedback?" and the
+  overall-body hint says "The agent will read this when it picks up
+  your feedback." A `LocalHeader.tsx` sibling to `PRHeader.tsx`
+  renders subject + branch + base ref + stats with no external link.
 
-**Rendered-surface UX (v0.3.2–v0.3.3):**
+**Diff-source detection** (agent-side, in `skills/review-local/SKILL.md`): explicit
+user request > unstaged changes (`git diff HEAD`) > current branch vs
+default base (`git diff <base>...HEAD`, base from
+`git symbolic-ref refs/remotes/origin/HEAD`, fallback `main`) >
+ambiguous → `AskUserQuestion`.
 
-- The "Comment on file" trigger lives inside the file header
-  (`.diff-head`), and the composer expands inline directly under it —
-  flush inside the diff frame — instead of floating above the diff.
-  `FileCommentComposer.tsx` owns the composer; `FileLevelComments.tsx`
-  only renders saved drafts.
-- Mermaid diagrams follow the page theme dynamically. A small
-  `useTheme()` hook in `MermaidDiagram.tsx` listens for `data-theme`
-  changes on `<html>` (via `MutationObserver`) and re-renders with
-  `theme: 'dark'` or `'neutral'`. The previous hardcoded `'neutral'`
-  clashed in dark mode.
-- The overall PR-level review comment is authored inside the Confirm
-  Review modal, not at the bottom of the page. The old
-  `PRLevelComment.tsx` is deleted; `ConfirmReviewModal.tsx` owns the
-  textarea bound to the same `prBody` / `setPrBody` (and
-  `PUT /api/pr-body`) used everywhere.
-- `Surface.tldr` and `Surface.reviewPrompts` items render through
-  `marked` (block / inline respectively), matching every other prose
-  field. Identifiers / titles stay plain text.
-- `Ctrl/Cmd+Enter` submits the active composer. A single
-  `src/frontend/lib/keyboard.ts → onSubmitKey(save)` helper is wired
-  into every composer textarea (line/range, file-level, draft-edit,
-  modal PR body — where it triggers `onConfirm` and submits the
-  review).
-- Composer-open state is now in the drafts context
-  (`activeFileComposerPath`), so the trigger button in `.diff-head`
-  and the composer body in the diff frame coordinate from separate
-  subtrees with single-active-composer semantics.
+**Carried over from v0.3.x:**
 
-**Other (v0.3.1):**
-
+- Drafts + single-shot review finalization on top of the read-only
+  surface. The reviewer can draft inline comments on a line, a range,
+  on a whole file, or as a top-level body. Agent `Suggestion` items
+  render inline with Accept-as-draft / dismiss.
+- Top-nav has the three actions — **Approve** (PR mode only), **Comment /
+  Finish review**, **Dismiss session** — each opening a confirmation
+  modal that previews what's about to happen.
+- `@pierre/diffs` v1.1.22 `InteractionManager` only allows the
+  imperative `onGutterUtilityClick` path (combining it with
+  `renderGutterUtility` was the v0.3.0 blank-page bug). We rely on the
+  imperative path because line/range drafts need its precise
+  `SelectedLineRange`.
+- Surface-authoring CLI: `*-add` / `*-update` / `*-drop` per object,
+  `set-tldr` / `set-review-prompts` setters, `surface validate
+  [--strict]`, `surface show [--diff <id> | --group <id>] [--text]`.
+  Every op accepts `--json` / `--quiet` / `--help`. `surface scaffold
+  --repo` accepts a local clone path or `OWNER/REPO` slug.
 - First-run bootstrap pipes npm/Vite output to
-  `$XDG_STATE_HOME/annai/bootstrap-<ts>.log` so the agent sees one
-  line on success, plus the tail on failure.
-- Client-side errors (window.onerror, unhandled rejection, React
-  error boundary) are captured by the frontend and POSTed to
-  `POST /api/client-errors`. They land in `session.clientErrors[]`
-  (capped at 50), surface in `annai.sh status`, and emit a
-  `daemon-error` event with `source: "client"` on the watch stream.
-
-**Carried over from v0.2:**
-
-- The skill builds `surface.json` via the `annai.sh surface ...`
-  CLI — `scaffold` produces a hunks-parsed skeleton; the `*-add`,
-  `*-update`, `*-drop` mutators and `set-*` setters mutate it
-  atomically with zod validation on every write. The agent does not
-  edit hunks / structure by hand.
-- The daemon serves the React frontend, exposes `GET /api/surface`, and
-  hosts the draft API: `GET /api/state`, `POST/PATCH/DELETE /api/drafts`,
-  `PUT /api/pr-body`, `POST /api/submit`, `POST /api/dismiss`,
-  `POST /api/client-errors`.
-- The reviewer can draft inline comments on a line, a range, on a whole
-  file, or as a top-level PR body. Agent `Suggestion` items render as
-  accept-as-draft / dismiss candidates inline.
-- Top-nav has three actions — **Approve**, **Comment**, **Dismiss
-  session** — each opening a confirmation modal that previews what's
-  about to happen.
-- On submit, the daemon writes `result.json` and emits `review-submitted`.
-  `annai.sh submit` makes a single atomic GraphQL submission to GitHub.
-- On dismiss, the daemon emits `session-aborted` and shuts down — no
-  GitHub call.
+  `$XDG_STATE_HOME/annai/bootstrap-<ts>.log`; the agent sees one line
+  on success, or the tail on failure.
+- Client-side errors (window.onerror, unhandled rejection, React error
+  boundary) are captured and POSTed to `POST /api/client-errors`,
+  surfaced via `annai.sh status` and `daemon-error` watch events with
+  `source: "client"`.
+- The daemon serves the React frontend, exposes `GET /api/surface`,
+  and hosts the draft API: `GET /api/state`, `POST/PATCH/DELETE
+  /api/drafts`, `PUT /api/pr-body`, `POST /api/submit`, `POST
+  /api/dismiss`, `POST /api/client-errors`. Submit writes `result.json`
+  atomically regardless of mode; PR mode then pushes via `annai.sh
+  submit` (three GraphQL mutations).
 
 The interactive subcommands `watch`, `result`, and `submit` are real.
 `reply` (ask-agent threads) is still stubbed and deferred.
@@ -115,20 +90,35 @@ The interactive subcommands `watch`, `result`, and `submit` are real.
 ## Layout
 
 - `.claude-plugin/plugin.json` — plugin manifest.
-- `skills/review/SKILL.md` — agent-facing contract for `/annai:review`.
-- `skills/review/references/` — `surface-example.json` (canonical shape the
-  agent mimics) and `surface.schema.json` (generated from zod via
-  `npm run gen:schema`).
+- `skills/review/SKILL.md` — base skill (shared procedure: author surface,
+  launch, watch, react, cleanup). Marked **NEVER INVOKE DIRECTLY** — the
+  two leaf skills load it.
+- `skills/review-pr/SKILL.md` — entry point for PR review. Triggers on
+  PR phrasings; carries Step 1 (`gh pr view`), Step 3a (`surface
+  scaffold --pr`), the PR finish-line message, and Step 7 (`annai.sh
+  submit` + GraphQL). Loads the base for everything else.
+- `skills/review-local/SKILL.md` — entry point for local-agent review.
+  Triggers on "review what I just changed" / branch phrasings; carries
+  Step 1 (diff-source precedence with AskUserQuestion fallback), Step
+  3a (`surface scaffold-local`), the local finish-line message, and
+  Step 7 (`annai.sh result`). Loads the base for everything else.
+- `skills/review/references/` — `surface-example.json` (PR shape the
+  agent mimics), `surface-example-local.json` (same shape for a
+  local-agent subject), and `surface.schema.json` (generated from zod
+  via `npm run gen:schema`).
 - `skills/review/scripts/annai.sh` — bash entry point. First run does
   `npm install` and `npm run build` inside `app/`; subsequent runs
   `exec node` the built CLI.
 - `skills/review/scripts/app/` — node + react project.
   - `src/cli.ts` + `src/cli/*` — subcommand router and handlers.
     `cli/submit.ts` builds the GraphQL bodies and shells out to
-    `gh api graphql`. `cli/surface.ts` + `cli/surface/*` is the
-    surface-authoring family (`scaffold`, `group-add`, `diff-move`,
+    `gh api graphql`; it refuses if `surface.subject.kind !== 'pr'`.
+    `cli/surface.ts` + `cli/surface/*` is the surface-authoring family
+    (`scaffold`, `scaffold-local`, `group-add`, `diff-move`,
     `annotation-add`, …) the skill drives instead of editing
-    `surface.json` directly.
+    `surface.json` directly. `surface/scaffold-build.ts` holds the
+    pure post-parse helpers (diff-id slugging, stats counting, surface
+    assembly + schema validation) both scaffolders call.
   - `src/daemon/*` — daemon process: `daemon.ts` (entry), `session.ts`
     (state + atomic checkpoint + draft mutators + `buildResult` +
     `recordClientError`), `ipc.ts` (length-prefixed JSON over unix
@@ -143,11 +133,11 @@ The interactive subcommands `watch`, `result`, and `submit` are real.
     `GET /api/state` shape (now includes `clientErrors[]`).
     `client-errors.ts` is the schema for browser-reported failures.
     `diff-parser.ts` turns unified-diff text into typed `Hunk[]` (used
-    by `surface scaffold`); `surface-mutators.ts` holds the pure
-    per-op functions every surface mutator handler calls (including
-    the `*-update` and `set-*` mutators added in v0.3.1);
-    `surface-io.ts` wraps them in read → validate → mutate →
-    re-validate → atomic-write.
+    by both scaffolders); `surface.ts` defines `subject` as a
+    `discriminatedUnion('kind', [prSubject, localSubject])`;
+    `surface-mutators.ts` holds the pure per-op functions every surface
+    mutator handler calls; `surface-io.ts` wraps them in read →
+    validate → mutate → re-validate → atomic-write.
   - `src/cli/output.ts` — shared `emitResult` / `wantsHelp` helpers
     that every surface op uses for one-line success messages,
     `--json` mode, and `--help`.
@@ -163,8 +153,11 @@ The interactive subcommands `watch`, `result`, and `submit` are real.
     throw lands as a visible fallback + a client-error report.
     `components/{DraftComposer,DraftDisplay,FileLevelComments,
     FileCommentComposer,SubmitBar,ConfirmReviewModal,DismissSessionModal}.tsx`
-    are the interaction surface. The PR-level review body is composed
-    inside `ConfirmReviewModal` (no standalone bottom-of-page section).
+    are the interaction surface. `PRHeader.tsx` / `LocalHeader.tsx` are
+    siblings; `SurfacePage.tsx` picks one based on `surface.subject.kind`
+    and threads `subjectKind` down into `SubmitBar` / `ConfirmReviewModal`.
+    The overall review body is composed inside `ConfirmReviewModal` (no
+    standalone bottom-of-page section).
   - `dist/` — gitignored; built by `annai.sh` on first run.
   - `tests/{unit,frontend}/` — vitest.
 
@@ -192,10 +185,10 @@ Manual smoke from the repo root:
 ./skills/review/scripts/annai.sh stop     --session smoke1
 ```
 
-Smoke the surface-authoring CLI against a real PR (uses `gh pr view`
-+ `gh pr diff` under the hood; `--diff` / `--meta` escape hatches
-let tests bypass `gh`). `--repo` accepts a local clone path or an
-`OWNER/REPO` slug; every op accepts `--json` / `--quiet` / `--help`:
+Smoke PR-mode scaffold against a real PR (uses `gh pr view` + `gh pr
+diff` under the hood; `--diff` / `--meta` escape hatches let tests
+bypass `gh`). `--repo` accepts a local clone path or an `OWNER/REPO`
+slug; every op accepts `--json` / `--quiet` / `--help`:
 
 ```sh
 ./skills/review/scripts/annai.sh surface scaffold \
@@ -214,13 +207,28 @@ let tests bypass `gh`). `--repo` accepts a local clone path or an
 ./skills/review/scripts/annai.sh surface          # full sub-op list
 ```
 
+Smoke local-agent mode (no `gh`, just a `git diff` file):
+
+```sh
+git -C <repo> diff HEAD > /tmp/local.diff
+./skills/review/scripts/annai.sh surface scaffold-local \
+  --repo <repo> --diff /tmp/local.diff --title "Agent draft" \
+  --base-ref HEAD --out /tmp/local-surface.json
+./skills/review/scripts/annai.sh start \
+  --surface /tmp/local-surface.json --session local-smoke
+# … reviewer hits Finish review in the browser …
+./skills/review/scripts/annai.sh result --session local-smoke   # what the agent reads
+./skills/review/scripts/annai.sh stop   --session local-smoke
+```
+
 The agent never speaks HTTP — only via `annai.sh` subcommands.
 
 ## Key invariants
 
-- **Hunks in `surface.json` must reproduce the actual PR exactly.** No
-  fictional diff lines. The frontend reconstructs a unified diff from the
-  typed `Hunk[]` and hands it to `@pierre/diffs`'s `<PatchDiff>`.
+- **Hunks in `surface.json` must reproduce the actual change exactly.**
+  No fictional diff lines, in either mode. The frontend reconstructs a
+  unified diff from the typed `Hunk[]` and hands it to `@pierre/diffs`'s
+  `<PatchDiff>`.
 - **All annotations must be grounded** in the diff or supplied context — no
   speculation. Doc-vs-code mismatches are an explicit `discrepancy` kind.
 - **No TypeScript `enum`.** Annotation/group/event kinds are `as const` maps
@@ -254,16 +262,21 @@ The agent never speaks HTTP — only via `annai.sh` subcommands.
 
 ## Dogfood targets
 
-- Tachikoma — `~/workspace/asermax/tachikoma`. All context lives in the PR
-  body (Katachi phase artifacts that get deleted on land).
-- Filadd scheduler-api — `~/workspace/filadd/scheduler-api`. Context lives
-  outside the PR (Notion + transcripts + agent state). The known-good
-  first dogfood target is PR #323 (referenced in the idea doc).
+- Tachikoma — `~/workspace/asermax/tachikoma`. PR mode; all context
+  lives in the PR body (Katachi phase artifacts that get deleted on
+  land).
+- Filadd scheduler-api — `~/workspace/filadd/scheduler-api`. PR mode;
+  context lives outside the PR (Notion + transcripts + agent state).
+  The known-good first dogfood target is PR #323 (referenced in the
+  idea doc).
+- Local-agent mode: any working tree with uncommitted changes or a
+  branch diverged from its base. The agent runs the appropriate `git
+  diff` itself per the precedence in `skills/review-local/SKILL.md`.
 
 ## Intentionally deferred
 
 - **Ask-agent threads** (`agent-asked` event, `annai.sh reply`, inline
-  thread UI). Deferred to v0.3.
+  thread UI). Still deferred.
 - Multi-session UX polish, watch reconnect/replay from `events.log` offsets,
   Claude Code marketplace publication.
 

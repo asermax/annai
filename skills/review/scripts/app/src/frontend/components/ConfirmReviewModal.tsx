@@ -25,7 +25,11 @@ const groupByPath = (drafts: Draft[]): Array<[string, Draft[]]> => {
   return [...map.entries()]
 }
 
-export const ConfirmReviewModal = () => {
+interface Props {
+  subjectKind: 'pr' | 'local'
+}
+
+export const ConfirmReviewModal = ({ subjectKind }: Props) => {
   const {
     confirmReview,
     drafts,
@@ -46,7 +50,13 @@ export const ConfirmReviewModal = () => {
   const blockCommentEmpty = confirmReview === 'comment' && !hasContent
   const isCleanApprove = confirmReview === 'approve' && !hasContent
 
-  const title = confirmReview === 'approve' ? 'Approve this PR?' : 'Submit comment review?'
+  const title = subjectKind === 'local'
+    ? 'Save your feedback?'
+    : confirmReview === 'approve' ? 'Approve this PR?' : 'Submit comment review?'
+
+  const hint = subjectKind === 'local'
+    ? 'Optional. The agent will read this when it picks up your feedback.'
+    : 'Optional. Shows at the top of your review on GitHub.'
 
   const onConfirm = (): void => {
     if (blockCommentEmpty || submitting) return
@@ -60,7 +70,7 @@ export const ConfirmReviewModal = () => {
 
         <section className="overall-comment">
           <h4>Overall comment</h4>
-          <p className="hint">Optional. Shows at the top of your review on GitHub.</p>
+          <p className="hint">{hint}</p>
           <textarea
             value={prBody}
             onChange={e => setPrBody(e.target.value)}

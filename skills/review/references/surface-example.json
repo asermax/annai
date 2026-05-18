@@ -1,5 +1,6 @@
 {
-  "pr": {
+  "subject": {
+    "kind": "pr",
     "url": "https://github.com/example-org/example-repo/pull/42",
     "title": "Add scheduling mode to transitions",
     "number": 42,

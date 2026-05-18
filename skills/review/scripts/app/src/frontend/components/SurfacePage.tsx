@@ -2,6 +2,7 @@ import { marked } from 'marked'
 
 import type { Surface } from '../../shared/surface.ts'
 import { PRHeader } from './PRHeader.tsx'
+import { LocalHeader } from './LocalHeader.tsx'
 import { OutlineNav } from './OutlineNav.tsx'
 import { Group } from './Group.tsx'
 import { MermaidDiagram } from './MermaidDiagram.tsx'
@@ -14,15 +15,23 @@ interface Props {
   surface: Surface
 }
 
+const truncate = (s: string, max: number): string => (s.length > max ? `${s.slice(0, max)}…` : s)
+
 export const SurfacePage = ({ surface }: Props) => {
+  const subject = surface.subject
+
+  const pillLabel = subject.kind === 'pr'
+    ? `${truncate(subject.title, 60)} #${subject.number}`
+    : `${truncate(subject.title, 60)} · local`
+
   return (
     <>
       <nav className="top">
         <span className="brand">Annai</span>
         <span className="pill">v{__ANNAI_VERSION__}</span>
-        <span className="pill mono">{surface.pr.title.slice(0, 60)}{surface.pr.title.length > 60 ? '…' : ''} #{surface.pr.number}</span>
+        <span className="pill mono">{pillLabel}</span>
         <span className="spacer" />
-        <SubmitBar />
+        <SubmitBar subjectKind={subject.kind} />
         <ThemeToggle />
       </nav>
 
@@ -30,7 +39,9 @@ export const SurfacePage = ({ surface }: Props) => {
 
       <div className="page">
         <div className="container">
-          <PRHeader pr={surface.pr} tldr={surface.tldr} />
+          {subject.kind === 'pr'
+            ? <PRHeader pr={subject} tldr={surface.tldr} />
+            : <LocalHeader subject={subject} tldr={surface.tldr} />}
 
           {surface.reviewPrompts != null && surface.reviewPrompts.length > 0 ? (
             <aside className="review-prompts-alert">
@@ -59,7 +70,7 @@ export const SurfacePage = ({ surface }: Props) => {
         </div>
       </div>
 
-      <ConfirmReviewModal />
+      <ConfirmReviewModal subjectKind={subject.kind} />
       <DismissSessionModal />
     </>
   )

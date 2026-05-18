@@ -8,7 +8,8 @@ import { MAX_CLIENT_ERRORS } from '../../src/shared/client-errors.ts'
 import type { Surface } from '../../src/shared/surface.ts'
 
 const dummySurface: Surface = {
-  pr: {
+  subject: {
+    kind: 'pr',
     url: 'https://github.com/x/y/pull/1',
     title: 't', number: 1, branch: 'b', baseBranch: 'main',
     stats: { additions: 0, deletions: 0, files: 0 },

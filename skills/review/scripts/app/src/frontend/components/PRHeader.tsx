@@ -1,8 +1,8 @@
 import { marked } from 'marked'
-import type { PRMeta } from '../../shared/surface.ts'
+import type { PrSubject } from '../../shared/surface.ts'
 
 interface Props {
-  pr: PRMeta
+  pr: PrSubject
   tldr: string
 }
 

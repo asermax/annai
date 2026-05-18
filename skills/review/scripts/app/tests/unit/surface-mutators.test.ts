@@ -29,7 +29,8 @@ const makeDiff = (id: string, path = `${id}.ts`): Diff => ({
 })
 
 const baseSurface = (): Surface => ({
-  pr: {
+  subject: {
+    kind: 'pr',
     url: 'https://github.com/x/y/pull/1',
     title: 't',
     number: 1,

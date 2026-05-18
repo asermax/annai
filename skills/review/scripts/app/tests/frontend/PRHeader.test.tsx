@@ -8,6 +8,7 @@ describe('<PRHeader>', () => {
     render(
       <PRHeader
         pr={{
+          kind: 'pr',
           url: 'https://github.com/example-org/example-repo/pull/42',
           title: 'Add scheduling mode',
           number: 42,

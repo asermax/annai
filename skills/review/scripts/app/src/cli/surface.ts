@@ -1,4 +1,5 @@
 import { runScaffold } from './surface/scaffold.ts'
+import { runScaffoldLocal } from './surface/scaffold-local.ts'
 import { runGroupAdd } from './surface/group-add.ts'
 import { runGroupDrop } from './surface/group-drop.ts'
 import { runGroupUpdate } from './surface/group-update.ts'
@@ -22,6 +23,7 @@ const SURFACE_USAGE = `usage: annai.sh surface <op> [args]
 
 ops:
   scaffold              --pr <n> --repo <path | OWNER/REPO> [--out <file>] [--diff <file>] [--meta <file>]
+  scaffold-local        --repo <path> --diff <file> --title <string> [--branch <name>] [--base-ref <spec>] [--out <file>]
   group-add             --id <id> --kind <kind> --title <t> [--intro-file <f>] [--before <id> | --after <id>] [--surface <p>]
   group-update          --id <id> [--kind <k>] [--title <t>] [--intro-file <f>] [--surface <p>]
   group-drop            --id <id> [--surface <p>]
@@ -52,6 +54,7 @@ type SurfaceHandler = (argv: string[]) => Promise<void>
 
 const HANDLERS: Record<string, SurfaceHandler> = {
   scaffold: runScaffold,
+  'scaffold-local': runScaffoldLocal,
   'group-add': runGroupAdd,
   'group-update': runGroupUpdate,
   'group-drop': runGroupDrop,
