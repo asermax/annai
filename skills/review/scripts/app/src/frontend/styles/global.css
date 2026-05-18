@@ -339,6 +339,38 @@ nav.top .spacer { flex: 1; }
 .status-banner { padding: 60px 32px; text-align: center; color: var(--muted); }
 .status-banner.error { color: var(--note-d); }
 
+/* finished screen (after submit/dismiss) */
+.finished-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+}
+.finished-card {
+  text-align: center;
+  max-width: 420px;
+  padding: 32px 28px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--bg-alt);
+}
+.finished-card h2 { margin: 0 0 8px 0; font-size: 18px; color: var(--ink); }
+.finished-card p { margin: 4px 0; color: var(--muted); font-size: 13px; }
+.finished-card .hint { margin-top: 12px; }
+.finished-card button {
+  margin-top: 16px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--ink);
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.finished-card button:hover { background: var(--bg-alt); }
+
 /* suggestion-block accept/dismiss actions */
 .suggestion-block .head .spacer { flex: 1; }
 .suggestion-block .head .text-action,

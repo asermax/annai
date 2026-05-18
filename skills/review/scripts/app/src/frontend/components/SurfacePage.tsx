@@ -1,6 +1,7 @@
 import { marked } from 'marked'
 
 import type { Surface } from '../../shared/surface.ts'
+import { useDrafts } from '../state/drafts.tsx'
 import { PRHeader } from './PRHeader.tsx'
 import { LocalHeader } from './LocalHeader.tsx'
 import { OutlineNav } from './OutlineNav.tsx'
@@ -10,6 +11,7 @@ import { ThemeToggle } from './ThemeToggle.tsx'
 import { SubmitBar } from './SubmitBar.tsx'
 import { ConfirmReviewModal } from './ConfirmReviewModal.tsx'
 import { DismissSessionModal } from './DismissSessionModal.tsx'
+import { FinishedScreen } from './FinishedScreen.tsx'
 
 interface Props {
   surface: Surface
@@ -18,6 +20,12 @@ interface Props {
 const truncate = (s: string, max: number): string => (s.length > max ? `${s.slice(0, max)}…` : s)
 
 export const SurfacePage = ({ surface }: Props) => {
+  const { finished } = useDrafts()
+
+  if (finished != null) {
+    return <FinishedScreen kind={finished} />
+  }
+
   const subject = surface.subject
 
   const pillLabel = subject.kind === 'pr'

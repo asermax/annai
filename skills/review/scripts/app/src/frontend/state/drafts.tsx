@@ -21,6 +21,8 @@ export type Anchor = LineAnchor | RangeAnchor
 
 // ---- state ----
 
+export type FinishedKind = 'submitted' | 'dismissed'
+
 export interface DraftsState {
   ready: boolean
   drafts: Draft[]
@@ -32,6 +34,7 @@ export interface DraftsState {
   confirmDismiss: boolean
   submitting: boolean
   submitError: string | null
+  finished: FinishedKind | null
 }
 
 const initialState: DraftsState = {
@@ -45,6 +48,7 @@ const initialState: DraftsState = {
   confirmDismiss: false,
   submitting: false,
   submitError: null,
+  finished: null,
 }
 
 type Action =
@@ -64,7 +68,7 @@ type Action =
   | { type: 'close-confirm-dismiss' }
   | { type: 'submit-start' }
   | { type: 'submit-fail', error: string }
-  | { type: 'submit-done' }
+  | { type: 'finish', kind: FinishedKind }
 
 const reducer = (state: DraftsState, action: Action): DraftsState => {
   switch (action.type) {
@@ -109,8 +113,14 @@ const reducer = (state: DraftsState, action: Action): DraftsState => {
       return { ...state, submitting: true, submitError: null }
     case 'submit-fail':
       return { ...state, submitting: false, submitError: action.error }
-    case 'submit-done':
-      return { ...state, submitting: false, confirmReview: null, confirmDismiss: false }
+    case 'finish':
+      return {
+        ...state,
+        submitting: false,
+        confirmReview: null,
+        confirmDismiss: false,
+        finished: action.kind,
+      }
     default:
       return state
   }
@@ -197,7 +207,7 @@ export const DraftsProvider = ({ children }: ProviderProps) => {
     dispatch({ type: 'submit-start' })
     try {
       await apiSubmit(decision)
-      dispatch({ type: 'submit-done' })
+      dispatch({ type: 'finish', kind: 'submitted' })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       dispatch({ type: 'submit-fail', error: message })
@@ -209,7 +219,7 @@ export const DraftsProvider = ({ children }: ProviderProps) => {
     dispatch({ type: 'submit-start' })
     try {
       await apiDismiss()
-      dispatch({ type: 'submit-done' })
+      dispatch({ type: 'finish', kind: 'dismissed' })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       dispatch({ type: 'submit-fail', error: message })
